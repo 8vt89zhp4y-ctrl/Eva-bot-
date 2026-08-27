@@ -99,6 +99,44 @@ const addCommand = new SlashCommandBuilder()
     );
 
 // ================================
+// COMANDO /UPDATE
+// ================================
+
+const updateCommand = new SlashCommandBuilder()
+    .setName('update')
+    .setDescription('Actualiza un Brainrot existente')
+    .addStringOption(option =>
+        option
+            .setName('nombre')
+            .setDescription('Nombre actual del Brainrot')
+            .setRequired(true)
+    )
+    .addAttachmentOption(option =>
+        option
+            .setName('imagen')
+            .setDescription('Nueva imagen del Brainrot')
+            .setRequired(true)
+    )
+    .addNumberOption(option =>
+        option
+            .setName('valor')
+            .setDescription('Nuevo valor del Brainrot')
+            .setRequired(true)
+    )
+    .addStringOption(option =>
+        option
+            .setName('demanda')
+            .setDescription('Nueva demanda del Brainrot')
+            .setRequired(true)
+    )
+    .addNumberOption(option =>
+        option
+            .setName('precio')
+            .setDescription('Nuevo precio en Robux')
+            .setRequired(true)
+    );
+
+// ================================
 // CONEXIÓN A MONGODB
 // ================================
 
@@ -119,12 +157,13 @@ client.once('ready', async () => {
 
     try {
         await client.application.commands.set([
-            addCommand.toJSON()
+            addCommand.toJSON(),
+            updateCommand.toJSON()
         ]);
 
-        console.log('✅ Comando /add registrado correctamente');
+        console.log('✅ Comandos /add y /update registrados correctamente');
     } catch (error) {
-        console.error('❌ Error registrando /add:', error);
+        console.error('❌ Error registrando comandos:', error);
     }
 });
 
@@ -135,10 +174,14 @@ client.once('ready', async () => {
 client.on('interactionCreate', async interaction => {
 
     // ================================
-    // /ADD
+    // SLASH COMMANDS
     // ================================
 
     if (interaction.isChatInputCommand()) {
+
+        // ================================
+        // /ADD
+        // ================================
 
         if (interaction.commandName === 'add') {
 
@@ -208,13 +251,105 @@ client.on('interactionCreate', async interaction => {
                     ephemeral: true
                 });
             }
+
+            return;
         }
 
-        return;
+        // ================================
+        // /UPDATE
+        // ================================
+
+        if (interaction.commandName === 'update') {
+
+            const nombre = interaction.options.getString('nombre');
+            const imagen = interaction.options.getAttachment('imagen');
+            const valor = interaction.options.getNumber('valor');
+            const demanda = interaction.options.getString('demanda');
+            const precio = interaction.options.getNumber('precio');
+
+            try {
+
+                // Buscar Brainrot existente
+                const brainrot = await Brainrot.findOne({
+                    nombre: {
+                        $regex: `^${nombre.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`,
+                        $options: 'i'
+                    }
+                });
+
+                // Si no existe
+                if (!brainrot) {
+                    return interaction.reply({
+                        content: `❌ No existe ningún Brainrot llamado **${nombre}**. No se creó ningún registro.`,
+                        ephemeral: true
+                    });
+                }
+
+                // Actualizar datos
+                brainrot.imagen = imagen.url;
+                brainrot.valor = valor;
+                brainrot.demanda = demanda;
+                brainrot.precio = precio;
+
+                await brainrot.save();
+
+                const timestamp = Math.floor(
+                    brainrot.updatedAt.getTime() / 1000
+                );
+
+                const embed = new EmbedBuilder()
+                    .setDescription(
+                        `🕐 **Última actualización:** <t:${timestamp}:F>`
+                    )
+                    .setTitle(`🛠️ ${brainrot.nombre}`)
+                    .setImage(brainrot.imagen)
+                    .addFields(
+                        {
+                            name: '💎 Valor',
+                            value: `${brainrot.valor}`,
+                            inline: true
+                        },
+                        {
+                            name: '📊 Demanda',
+                            value: brainrot.demanda,
+                            inline: true
+                        },
+                        {
+                            name: '💲 Precio',
+                            value: `${brainrot.precio} Robux`,
+                            inline: true
+                        }
+                    )
+                    .setTimestamp();
+
+                await interaction.channel.send({
+                    embeds: [embed]
+                });
+
+                await interaction.reply({
+                    content: `✅ **${brainrot.nombre}** actualizado correctamente.`,
+                    ephemeral: true
+                });
+
+            } catch (error) {
+
+                console.error(
+                    '❌ Error actualizando el Brainrot:',
+                    error
+                );
+
+                await interaction.reply({
+                    content: '❌ Ocurrió un error al actualizar el Brainrot.',
+                    ephemeral: true
+                });
+            }
+
+            return;
+        }
     }
 
     // ================================
-    // BOTONES
+    // BOTONES DE ?VALOR
     // ================================
 
     if (interaction.isButton()) {
