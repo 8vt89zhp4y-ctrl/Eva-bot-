@@ -40,7 +40,7 @@ const brainrotSchema = new mongoose.Schema({
     },
 
     valor: {
-        type: Number,
+        type: String,
         required: true
     },
 
@@ -51,7 +51,7 @@ const brainrotSchema = new mongoose.Schema({
     },
 
     precio: {
-        type: Number,
+        type: String,
         required: true
     }
 }, {
@@ -59,6 +59,14 @@ const brainrotSchema = new mongoose.Schema({
 });
 
 const Brainrot = mongoose.model('Brainrot', brainrotSchema);
+
+// ================================
+// FUNCIÓN PARA VALIDAR NÚMEROS
+// ================================
+
+function validarNumero(numero) {
+    return /^\d+(\.\d+)?$/.test(numero);
+}
 
 // ================================
 // COMANDO /ADD
@@ -79,10 +87,10 @@ const addCommand = new SlashCommandBuilder()
             .setDescription('Imagen del Brainrot')
             .setRequired(true)
     )
-    .addNumberOption(option =>
+    .addStringOption(option =>
         option
             .setName('valor')
-            .setDescription('Valor del Brainrot')
+            .setDescription('Valor del Brainrot. Ejemplo: 4.2')
             .setRequired(true)
     )
     .addStringOption(option =>
@@ -91,10 +99,10 @@ const addCommand = new SlashCommandBuilder()
             .setDescription('Demanda del Brainrot')
             .setRequired(true)
     )
-    .addNumberOption(option =>
+    .addStringOption(option =>
         option
             .setName('precio')
-            .setDescription('Precio en Robux')
+            .setDescription('Precio en Robux. Ejemplo: 4.2')
             .setRequired(true)
     );
 
@@ -117,10 +125,10 @@ const updateCommand = new SlashCommandBuilder()
             .setDescription('Nueva imagen del Brainrot')
             .setRequired(true)
     )
-    .addNumberOption(option =>
+    .addStringOption(option =>
         option
             .setName('valor')
-            .setDescription('Nuevo valor del Brainrot')
+            .setDescription('Nuevo valor. Ejemplo: 4.2')
             .setRequired(true)
     )
     .addStringOption(option =>
@@ -129,10 +137,10 @@ const updateCommand = new SlashCommandBuilder()
             .setDescription('Nueva demanda del Brainrot')
             .setRequired(true)
     )
-    .addNumberOption(option =>
+    .addStringOption(option =>
         option
             .setName('precio')
-            .setDescription('Nuevo precio en Robux')
+            .setDescription('Nuevo precio en Robux. Ejemplo: 4.2')
             .setRequired(true)
     );
 
@@ -187,9 +195,31 @@ client.on('interactionCreate', async interaction => {
 
             const nombre = interaction.options.getString('nombre');
             const imagen = interaction.options.getAttachment('imagen');
-            const valor = interaction.options.getNumber('valor');
+
+            let valor = interaction.options.getString('valor');
             const demanda = interaction.options.getString('demanda');
-            const precio = interaction.options.getNumber('precio');
+
+            let precio = interaction.options.getString('precio');
+
+            // Reemplazar coma por punto por si escriben 4,2
+            valor = valor.replace(',', '.');
+            precio = precio.replace(',', '.');
+
+            // Validar valor
+            if (!validarNumero(valor)) {
+                return interaction.reply({
+                    content: '❌ El valor debe ser un número. Ejemplo: `4.2`',
+                    ephemeral: true
+                });
+            }
+
+            // Validar precio
+            if (!validarNumero(precio)) {
+                return interaction.reply({
+                    content: '❌ El precio debe ser un número. Ejemplo: `4.2`',
+                    ephemeral: true
+                });
+            }
 
             try {
 
@@ -214,7 +244,7 @@ client.on('interactionCreate', async interaction => {
                     .addFields(
                         {
                             name: '💎 Valor',
-                            value: `${valor}`,
+                            value: valor,
                             inline: true
                         },
                         {
@@ -263,29 +293,52 @@ client.on('interactionCreate', async interaction => {
 
             const nombre = interaction.options.getString('nombre');
             const imagen = interaction.options.getAttachment('imagen');
-            const valor = interaction.options.getNumber('valor');
+
+            let valor = interaction.options.getString('valor');
             const demanda = interaction.options.getString('demanda');
-            const precio = interaction.options.getNumber('precio');
+
+            let precio = interaction.options.getString('precio');
+
+            valor = valor.replace(',', '.');
+            precio = precio.replace(',', '.');
+
+            if (!validarNumero(valor)) {
+                return interaction.reply({
+                    content: '❌ El valor debe ser un número. Ejemplo: `4.2`',
+                    ephemeral: true
+                });
+            }
+
+            if (!validarNumero(precio)) {
+                return interaction.reply({
+                    content: '❌ El precio debe ser un número. Ejemplo: `4.2`',
+                    ephemeral: true
+                });
+            }
 
             try {
 
-                // Buscar Brainrot existente
+                const nombreEscapado = nombre.replace(
+                    /[.*+?^${}()|[\]\\]/g,
+                    '\\$&'
+                );
+
                 const brainrot = await Brainrot.findOne({
                     nombre: {
-                        $regex: `^${nombre.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`,
+                        $regex: `^${nombreEscapado}$`,
                         $options: 'i'
                     }
                 });
 
-                // Si no existe
                 if (!brainrot) {
                     return interaction.reply({
-                        content: `❌ No existe ningún Brainrot llamado **${nombre}**. No se creó ningún registro.`,
+                        content:
+                            `❌ No existe ningún Brainrot llamado **${nombre}**.\n` +
+                            `No se creó ningún registro.`,
                         ephemeral: true
                     });
                 }
 
-                // Actualizar datos
                 brainrot.imagen = imagen.url;
                 brainrot.valor = valor;
                 brainrot.demanda = demanda;
@@ -306,7 +359,7 @@ client.on('interactionCreate', async interaction => {
                     .addFields(
                         {
                             name: '💎 Valor',
-                            value: `${brainrot.valor}`,
+                            value: brainrot.valor,
                             inline: true
                         },
                         {
@@ -327,7 +380,8 @@ client.on('interactionCreate', async interaction => {
                 });
 
                 await interaction.reply({
-                    content: `✅ **${brainrot.nombre}** actualizado correctamente.`,
+                    content:
+                        `✅ **${brainrot.nombre}** actualizado correctamente.`,
                     ephemeral: true
                 });
 
@@ -339,7 +393,8 @@ client.on('interactionCreate', async interaction => {
                 );
 
                 await interaction.reply({
-                    content: '❌ Ocurrió un error al actualizar el Brainrot.',
+                    content:
+                        '❌ Ocurrió un error al actualizar el Brainrot.',
                     ephemeral: true
                 });
             }
@@ -387,7 +442,7 @@ client.on('interactionCreate', async interaction => {
                 .addFields(
                     {
                         name: '💎 Valor',
-                        value: `${brainrot.valor}`,
+                        value: brainrot.valor,
                         inline: true
                     },
                     {
@@ -415,7 +470,8 @@ client.on('interactionCreate', async interaction => {
             );
 
             await interaction.reply({
-                content: '❌ Ocurrió un error al mostrar el Brainrot.',
+                content:
+                    '❌ Ocurrió un error al mostrar el Brainrot.',
                 ephemeral: true
             });
         }
@@ -491,7 +547,7 @@ client.on('messageCreate', async message => {
                 .addFields(
                     {
                         name: '💎 Valor',
-                        value: `${brainrot.valor}`,
+                        value: brainrot.valor,
                         inline: true
                     },
                     {
