@@ -6,7 +6,10 @@ const {
     ActionRowBuilder,
     StringSelectMenuBuilder,
     ButtonBuilder,
-    ButtonStyle
+    ButtonStyle,
+    ModalBuilder,
+    TextInputBuilder,
+    TextInputStyle
 } = require('discord.js');
 
 const mongoose = require('mongoose');
@@ -70,7 +73,7 @@ function validarNumero(numero) {
 }
 
 // ================================
-// EMBED DE BRAINROT
+// EMBED BRAINROT
 // ================================
 
 function crearEmbedBrainrot(brainrot) {
@@ -141,7 +144,7 @@ const addCommand = new SlashCommandBuilder()
     .addStringOption(option =>
         option
             .setName('precio')
-            .setDescription('Precio en Robux. Ejemplo: 4.2')
+            .setDescription('Precio en Robux')
             .setRequired(true)
     );
 
@@ -228,214 +231,334 @@ client.once('ready', async () => {
     }
 });
 
-// ================================
-// PANEL NORMAL ?VALORES
-// ================================
+// ==================================================
+// FUNCIÓN PARA BUSCAR BRAINROT POR NOMBRE
+// ==================================================
 
-function crearPanelValores(brainrots, pagina) {
+async function buscarBrainrot(nombre) {
 
-    const porPagina = 25;
+    const texto = nombre
+        .trim()
+        .toLowerCase();
 
-    const totalPaginas = Math.max(
-        1,
-        Math.ceil(brainrots.length / porPagina)
-    );
+    if (!texto) return null;
 
-    const inicio = pagina * porPagina;
+    // Primero intenta coincidencia exacta
+    let brainrot = await Brainrot.findOne({
+        nombre: {
+            $regex: `^${texto.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`,
+            $options: 'i'
+        }
+    });
 
-    const lista = brainrots.slice(
-        inicio,
-        inicio + porPagina
-    );
+    if (brainrot) return brainrot;
 
-    const opciones = lista.map(brainrot => ({
-        label: brainrot.nombre.substring(0, 100),
-        value: brainrot._id.toString()
-    }));
+    // Después busca coincidencia parcial
+    brainrot = await Brainrot.findOne({
+        nombre: {
+            $regex: texto.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'),
+            $options: 'i'
+        }
+    });
 
-    const menu = new StringSelectMenuBuilder()
-        .setCustomId(
-            `valores_select_${pagina}`
-        )
-        .setPlaceholder(
-            '🔎 Busca o selecciona un Brainrot'
-        )
-        .addOptions(opciones);
-
-    const filaMenu = new ActionRowBuilder()
-        .addComponents(menu);
-
-    const anterior = new ButtonBuilder()
-        .setCustomId(
-            `valores_prev_${pagina}`
-        )
-        .setLabel('Anterior')
-        .setEmoji('◀️')
-        .setStyle(ButtonStyle.Secondary)
-        .setDisabled(pagina === 0);
-
-    const siguiente = new ButtonBuilder()
-        .setCustomId(
-            `valores_next_${pagina}`
-        )
-        .setLabel('Siguiente')
-        .setEmoji('▶️')
-        .setStyle(ButtonStyle.Secondary)
-        .setDisabled(
-            pagina >= totalPaginas - 1
-        );
-
-    const sumar = new ButtonBuilder()
-        .setCustomId(
-            `valores_sumar_${pagina}`
-        )
-        .setLabel('Sumar valores')
-        .setEmoji('➕')
-        .setStyle(ButtonStyle.Success);
-
-    const filaBotones = new ActionRowBuilder()
-        .addComponents(
-            anterior,
-            sumar,
-            siguiente
-        );
-
-    const embed = new EmbedBuilder()
-        .setTitle('📚 VALORES DE BRAINROTS')
-        .setDescription(
-            '🔎 **Selecciona un Brainrot para consultar su información.**\n\n' +
-            `📦 Brainrots registrados: **${brainrots.length}**\n` +
-            `📄 Página: **${pagina + 1}/${totalPaginas}**`
-        )
-        .setTimestamp();
-
-    return {
-        embeds: [embed],
-        components: [
-            filaMenu,
-            filaBotones
-        ]
-    };
+    return brainrot;
 }
 
-// ================================
-// PANEL DE SUMA
-// ================================
+// ==================================================
+// PARSEAR LISTA DE BRAINROTS
+// ==================================================
 
-function crearPanelSuma(brainrots, pagina) {
+async function procesarLista(texto) {
 
-    const porPagina = 25;
+    const lineas = texto
+        .split(/[\n,]+/)
+        .map(linea => linea.trim())
+        .filter(Boolean);
 
-    const totalPaginas = Math.max(
-        1,
-        Math.ceil(brainrots.length / porPagina)
+    const resultados = [];
+
+    for (const linea of lineas) {
+
+        /*
+        Formatos aceptados:
+
+        10 garamas
+        3 skibidis
+        2 dragones
+
+        También:
+        10x garamas
+        10 x garamas
+        */
+
+        const coincidencia = linea.match(
+            /^(\d+(?:\.\d+)?)\s*(?:x\s*)?(.+)$/i
+        );
+
+        if (!coincidencia) {
+            resultados.push({
+                texto: linea,
+                error: true
+            });
+
+            continue;
+        }
+
+        const cantidad = parseFloat(
+            coincidencia[1]
+        );
+
+        const nombreBuscado =
+            coincidencia[2].trim();
+
+        const brainrot =
+            await buscarBrainrot(nombreBuscado);
+
+        if (!brainrot) {
+
+            resultados.push({
+                texto: linea,
+                nombre: nombreBuscado,
+                error: true
+            });
+
+            continue;
+        }
+
+        const valorUnitario =
+            parseFloat(
+                String(brainrot.valor)
+                    .replace(',', '.')
+            );
+
+        if (Number.isNaN(valorUnitario)) {
+
+            resultados.push({
+                texto: linea,
+                nombre: brainrot.nombre,
+                error: true
+            });
+
+            continue;
+        }
+
+        const valorTotal =
+            cantidad * valorUnitario;
+
+        resultados.push({
+            cantidad,
+            nombre: brainrot.nombre,
+            valorUnitario,
+            valorTotal,
+            error: false
+        });
+    }
+
+    return resultados;
+}
+
+// ==================================================
+// CALCULAR TOTAL
+// ==================================================
+
+function calcularTotal(lista) {
+
+    return lista.reduce(
+        (total, item) => {
+
+            if (item.error) {
+                return total;
+            }
+
+            return total + item.valorTotal;
+
+        },
+        0
     );
+}
 
-    const inicio = pagina * porPagina;
+// ==================================================
+// FORMATEAR NÚMERO
+// ==================================================
 
-    const lista = brainrots.slice(
-        inicio,
-        inicio + porPagina
-    );
+function formatearNumero(numero) {
 
-    const opciones = lista.map(brainrot => ({
-        label: brainrot.nombre.substring(0, 100),
-        description: `Valor: ${brainrot.valor}`.substring(0, 100),
-        value: brainrot._id.toString()
-    }));
+    if (Number.isInteger(numero)) {
+        return numero.toString();
+    }
 
-    const menu = new StringSelectMenuBuilder()
-        .setCustomId(
-            `suma_select_${pagina}`
+    return Number(
+        numero.toFixed(10)
+    ).toString();
+}
+
+// ==================================================
+// CREAR EMBED WFL
+// ==================================================
+
+function crearEmbedWFL(datos) {
+
+    const diferencia =
+        datos.totalRecibes -
+        datos.totalDas;
+
+    let resultado;
+    let emoji;
+
+    const tolerancia = 0.000001;
+
+    if (Math.abs(diferencia) <= tolerancia) {
+
+        resultado = 'FAIR';
+        emoji = '🟡';
+
+    } else if (diferencia > 0) {
+
+        resultado = 'WIN';
+        emoji = '🟢';
+
+    } else {
+
+        resultado = 'LOSE';
+        emoji = '🔴';
+    }
+
+    const listaDas =
+        datos.das
+            .map(item => {
+
+                if (item.error) {
+                    return `❌ **${item.texto}** — no encontrado`;
+                }
+
+                return `• ${item.cantidad}x **${item.nombre}** — ${formatearNumero(item.valorTotal)}`;
+            })
+            .join('\n');
+
+    const listaRecibes =
+        datos.recibes
+            .map(item => {
+
+                if (item.error) {
+                    return `❌ **${item.texto}** — no encontrado`;
+                }
+
+                return `• ${item.cantidad}x **${item.nombre}** — ${formatearNumero(item.valorTotal)}`;
+            })
+            .join('\n');
+
+    return new EmbedBuilder()
+        .setTitle(`${emoji} WFL — ${resultado}`)
+        .addFields(
+            {
+                name: '🟢 TÚ DAS',
+                value:
+                    `${listaDas || 'Nada'}\n\n` +
+                    `💎 **Total: ${formatearNumero(datos.totalDas)}**`
+            },
+            {
+                name: '🔵 TE DAN',
+                value:
+                    `${listaRecibes || 'Nada'}\n\n` +
+                    `💎 **Total: ${formatearNumero(datos.totalRecibes)}**`
+            },
+            {
+                name: '⚖️ RESULTADO',
+                value:
+                    `🟢 Tú das: **${formatearNumero(datos.totalDas)}**\n` +
+                    `🔵 Recibes: **${formatearNumero(datos.totalRecibes)}**\n` +
+                    `📊 Diferencia: **${diferencia >= 0 ? '+' : ''}${formatearNumero(diferencia)}**\n\n` +
+                    `${emoji} **${resultado}**`
+            }
         )
-        .setPlaceholder(
-            '➕ Selecciona varios Brainrots'
-        )
-        .setMinValues(1)
-        .setMaxValues(opciones.length)
-        .addOptions(opciones);
+        .setTimestamp();
+}
 
-    const filaMenu = new ActionRowBuilder()
-        .addComponents(menu);
+// ==================================================
+// PANEL WFL
+// ==================================================
 
-    const calcular = new ButtonBuilder()
-        .setCustomId(
-            `suma_calcular_${pagina}`
+function crearPanelWFL() {
+
+    const embed = new EmbedBuilder()
+        .setTitle('⚖️ WFL — CALCULADORA DE TRADES')
+        .setDescription(
+            'Compara el valor de un intercambio usando los Brainrots registrados.\n\n' +
+
+            '🟢 **TÚ DAS**\n' +
+            'Escribe los Brainrots que estás dando.\n' +
+            'Ejemplo: `10 garamas, 3 skibidis`\n\n' +
+
+            '🔵 **TE DAN**\n' +
+            'Escribe los Brainrots que vas a recibir.\n' +
+            'Ejemplo: `1 dragón, 5 garamas`\n\n' +
+
+            '💡 Puedes poner cantidades diferentes.\n' +
+            'Ejemplo: `10 garamas` significa **10 × valor de Garama**.'
         )
-        .setLabel('Calcular')
-        .setEmoji('🧮')
+        .setFooter({
+            text: 'Los valores utilizados son los registrados en /add'
+        });
+
+    const darButton = new ButtonBuilder()
+        .setCustomId('wfl_das')
+        .setLabel('Tú das')
+        .setEmoji('🟢')
         .setStyle(ButtonStyle.Success);
 
-    const cancelar = new ButtonBuilder()
-        .setCustomId(
-            `suma_cancelar_${pagina}`
-        )
-        .setLabel('Cancelar')
-        .setEmoji('❌')
+    const recibesButton = new ButtonBuilder()
+        .setCustomId('wfl_recibes')
+        .setLabel('Te dan')
+        .setEmoji('🔵')
+        .setStyle(ButtonStyle.Primary);
+
+    const resultadoButton = new ButtonBuilder()
+        .setCustomId('wfl_resultado')
+        .setLabel('Ver resultado')
+        .setEmoji('⚖️')
+        .setStyle(ButtonStyle.Secondary);
+
+    const limpiarButton = new ButtonBuilder()
+        .setCustomId('wfl_limpiar')
+        .setLabel('Limpiar')
+        .setEmoji('🗑️')
         .setStyle(ButtonStyle.Danger);
 
-    const anterior = new ButtonBuilder()
-        .setCustomId(
-            `suma_prev_${pagina}`
-        )
-        .setLabel('Anterior')
-        .setEmoji('◀️')
-        .setStyle(ButtonStyle.Secondary)
-        .setDisabled(pagina === 0);
-
-    const siguiente = new ButtonBuilder()
-        .setCustomId(
-            `suma_next_${pagina}`
-        )
-        .setLabel('Siguiente')
-        .setEmoji('▶️')
-        .setStyle(ButtonStyle.Secondary)
-        .setDisabled(
-            pagina >= totalPaginas - 1
-        );
-
-    const filaBotones = new ActionRowBuilder()
+    const fila = new ActionRowBuilder()
         .addComponents(
-            anterior,
-            cancelar,
-            calcular,
-            siguiente
+            darButton,
+            recibesButton,
+            resultadoButton,
+            limpiarButton
         );
-
-    const embed = new EmbedBuilder()
-        .setTitle('🧮 SUMAR VALORES')
-        .setDescription(
-            'Selecciona **uno o varios Brainrots**.\n\n' +
-            '💎 **Únicamente se sumará el Valor de cada Brainrot.**\n\n' +
-            `📦 Brainrots registrados: **${brainrots.length}**\n` +
-            `📄 Página: **${pagina + 1}/${totalPaginas}**`
-        )
-        .setTimestamp();
 
     return {
         embeds: [embed],
-        components: [
-            filaMenu,
-            filaBotones
-        ]
+        components: [fila]
     };
 }
 
-// ================================
+// ==================================================
+// DATOS TEMPORALES WFL
+// ==================================================
+
+const wflData = new Map();
+
+// ==================================================
 // INTERACCIONES
-// ================================
+// ==================================================
 
 client.on('interactionCreate', async interaction => {
 
-    // ================================
+    // ==================================================
     // SLASH COMMANDS
-    // ================================
+    // ==================================================
 
     if (interaction.isChatInputCommand()) {
 
-        // ================================
+        // ==================================================
         // /ADD
-        // ================================
+        // ==================================================
 
         if (interaction.commandName === 'add') {
 
@@ -484,11 +607,12 @@ client.on('interactionCreate', async interaction => {
                         precio
                     });
 
-                const embed =
-                    crearEmbedBrainrot(brainrot);
-
                 await interaction.channel.send({
-                    embeds: [embed]
+                    embeds: [
+                        crearEmbedBrainrot(
+                            brainrot
+                        )
+                    ]
                 });
 
                 await interaction.reply({
@@ -514,9 +638,9 @@ client.on('interactionCreate', async interaction => {
             return;
         }
 
-        // ================================
+        // ==================================================
         // /UPDATE
-        // ================================
+        // ==================================================
 
         if (interaction.commandName === 'update') {
 
@@ -549,7 +673,7 @@ client.on('interactionCreate', async interaction => {
             if (!validarNumero(precio)) {
                 return interaction.reply({
                     content:
-                        '❌ El precio debe ser un número. Ejemplo: `2500.5`',
+                        '❌ El precio debe ser un número.',
                     ephemeral: true
                 });
             }
@@ -593,11 +717,12 @@ client.on('interactionCreate', async interaction => {
 
                 await brainrot.save();
 
-                const embed =
-                    crearEmbedBrainrot(brainrot);
-
                 await interaction.channel.send({
-                    embeds: [embed]
+                    embeds: [
+                        crearEmbedBrainrot(
+                            brainrot
+                        )
+                    ]
                 });
 
                 await interaction.reply({
@@ -624,399 +749,315 @@ client.on('interactionCreate', async interaction => {
         }
     }
 
-    // ================================
-    // SELECTOR NORMAL
-    // ================================
+    // ==================================================
+    // BOTONES
+    // ==================================================
 
-    if (interaction.isStringSelectMenu()) {
+    if (interaction.isButton()) {
 
-        if (
-            interaction.customId.startsWith(
-                'valores_select_'
-            )
-        ) {
+        // ==================================================
+        // TÚ DAS
+        // ==================================================
 
-            const brainrotId =
-                interaction.values[0];
+        if (interaction.customId === 'wfl_das') {
 
-            try {
-
-                const brainrot =
-                    await Brainrot.findById(
-                        brainrotId
+            const modal =
+                new ModalBuilder()
+                    .setCustomId(
+                        'wfl_modal_das'
+                    )
+                    .setTitle(
+                        '🟢 Tú das'
                     );
 
-                if (!brainrot) {
-                    return interaction.reply({
-                        content:
-                            '❌ Ese Brainrot ya no existe.',
-                        ephemeral: true
-                    });
-                }
+            const input =
+                new TextInputBuilder()
+                    .setCustomId(
+                        'wfl_das_input'
+                    )
+                    .setLabel(
+                        '¿Qué estás dando?'
+                    )
+                    .setPlaceholder(
+                        '10 garamas, 3 skibidis'
+                    )
+                    .setStyle(
+                        TextInputStyle.Paragraph
+                    )
+                    .setRequired(true);
 
-                await interaction.reply({
-                    embeds: [
-                        crearEmbedBrainrot(
-                            brainrot
-                        )
-                    ],
-                    ephemeral: true
-                });
+            modal.addComponents(
+                new ActionRowBuilder()
+                    .addComponents(input)
+            );
 
-            } catch (error) {
-
-                console.error(error);
-
-                await interaction.reply({
-                    content:
-                        '❌ Ocurrió un error.',
-                    ephemeral: true
-                });
-            }
+            await interaction.showModal(
+                modal
+            );
 
             return;
         }
 
-        // ================================
-        // SELECTOR DE SUMA
-        // ================================
+        // ==================================================
+        // TE DAN
+        // ==================================================
+
+        if (interaction.customId === 'wfl_recibes') {
+
+            const modal =
+                new ModalBuilder()
+                    .setCustomId(
+                        'wfl_modal_recibes'
+                    )
+                    .setTitle(
+                        '🔵 Te dan'
+                    );
+
+            const input =
+                new TextInputBuilder()
+                    .setCustomId(
+                        'wfl_recibes_input'
+                    )
+                    .setLabel(
+                        '¿Qué vas a recibir?'
+                    )
+                    .setPlaceholder(
+                        '1 dragón, 5 garamas'
+                    )
+                    .setStyle(
+                        TextInputStyle.Paragraph
+                    )
+                    .setRequired(true);
+
+            modal.addComponents(
+                new ActionRowBuilder()
+                    .addComponents(input)
+            );
+
+            await interaction.showModal(
+                modal
+            );
+
+            return;
+        }
+
+        // ==================================================
+        // RESULTADO
+        // ==================================================
 
         if (
-            interaction.customId.startsWith(
-                'suma_select_'
-            )
+            interaction.customId ===
+            'wfl_resultado'
         ) {
 
-            // Guardamos los IDs seleccionados
-            // dentro de la respuesta de interacción
-            const ids = interaction.values.join(',');
-
-            const pagina =
-                interaction.customId.split('_')[2];
-
-            const brainrots =
-                await Brainrot.find()
-                    .sort({ nombre: 1 });
-
-            const panel =
-                crearPanelSuma(
-                    brainrots,
-                    Number(pagina)
+            const datos =
+                wflData.get(
+                    interaction.user.id
                 );
 
-            // Cambiamos el customId del botón
-            // para incluir temporalmente los IDs
-            panel.components[1].components[2]
-                .setCustomId(
-                    `suma_calcular_${pagina}_${ids}`
+            if (!datos) {
+
+                return interaction.reply({
+                    content:
+                        '❌ Primero introduce lo que das y lo que recibes.',
+                    ephemeral: true
+                });
+            }
+
+            if (
+                !datos.das ||
+                !datos.recibes
+            ) {
+
+                return interaction.reply({
+                    content:
+                        '❌ Debes completar **Tú das** y **Te dan** antes de calcular.',
+                    ephemeral: true
+                });
+            }
+
+            const totalDas =
+                calcularTotal(
+                    datos.das
                 );
 
-            await interaction.update(panel);
+            const totalRecibes =
+                calcularTotal(
+                    datos.recibes
+                );
+
+            const embed =
+                crearEmbedWFL({
+                    das: datos.das,
+                    recibes: datos.recibes,
+                    totalDas,
+                    totalRecibes
+                });
+
+            await interaction.reply({
+                embeds: [embed],
+                ephemeral: true
+            });
+
+            return;
+        }
+
+        // ==================================================
+        // LIMPIAR
+        // ==================================================
+
+        if (
+            interaction.customId ===
+            'wfl_limpiar'
+        ) {
+
+            wflData.delete(
+                interaction.user.id
+            );
+
+            await interaction.reply({
+                content:
+                    '🗑️ Se borraron los datos de tu WFL.',
+                ephemeral: true
+            });
 
             return;
         }
     }
 
-    // ================================
-    // BOTONES
-    // ================================
+    // ==================================================
+    // MODALES
+    // ==================================================
 
-    if (interaction.isButton()) {
+    if (interaction.isModalSubmit()) {
 
-        // ================================
-        // BOTONES DEL PANEL ?VALORES
-        // ================================
+        // ==================================================
+        // MODAL TÚ DAS
+        // ==================================================
 
         if (
-            interaction.customId.startsWith(
-                'valores_'
-            )
+            interaction.customId ===
+            'wfl_modal_das'
         ) {
 
-            const partes =
-                interaction.customId.split('_');
-
-            const accion = partes[1];
-
-            const paginaActual =
-                Number(partes[2]);
-
-            try {
-
-                const brainrots =
-                    await Brainrot.find()
-                        .sort({ nombre: 1 });
-
-                if (!brainrots.length) {
-                    return interaction.update({
-                        embeds: [
-                            new EmbedBuilder()
-                                .setTitle(
-                                    '📚 VALORES DE BRAINROTS'
-                                )
-                                .setDescription(
-                                    '❌ No hay Brainrots registrados.'
-                                )
-                        ],
-                        components: []
-                    });
-                }
-
-                if (accion === 'sumar') {
-
-                    const panel =
-                        crearPanelSuma(
-                            brainrots,
-                            paginaActual
-                        );
-
-                    return interaction.update(
-                        panel
-                    );
-                }
-
-                let nuevaPagina =
-                    paginaActual;
-
-                if (accion === 'prev') {
-                    nuevaPagina--;
-                }
-
-                if (accion === 'next') {
-                    nuevaPagina++;
-                }
-
-                const totalPaginas =
-                    Math.ceil(
-                        brainrots.length / 25
-                    );
-
-                nuevaPagina =
-                    Math.max(
-                        0,
-                        Math.min(
-                            nuevaPagina,
-                            totalPaginas - 1
-                        )
-                    );
-
-                const panel =
-                    crearPanelValores(
-                        brainrots,
-                        nuevaPagina
-                    );
-
-                await interaction.update(
-                    panel
+            const texto =
+                interaction.fields.getTextInputValue(
+                    'wfl_das_input'
                 );
 
-            } catch (error) {
+            const lista =
+                await procesarLista(
+                    texto
+                );
 
-                console.error(error);
+            let datos =
+                wflData.get(
+                    interaction.user.id
+                ) || {};
 
-                await interaction.reply({
+            datos.das =
+                lista;
+
+            wflData.set(
+                interaction.user.id,
+                datos
+            );
+
+            const errores =
+                lista.filter(
+                    item => item.error
+                );
+
+            if (errores.length) {
+
+                return interaction.reply({
                     content:
-                        '❌ Ocurrió un error.',
+                        '⚠️ Se guardó tu oferta, pero algunos Brainrots no fueron encontrados:\n\n' +
+                        errores
+                            .map(
+                                e =>
+                                    `❌ ${e.texto || e.nombre}`
+                            )
+                            .join('\n'),
                     ephemeral: true
                 });
             }
 
+            await interaction.reply({
+                content:
+                    '✅ Se guardó correctamente lo que das.',
+                ephemeral: true
+            });
+
             return;
         }
 
-        // ================================
-        // BOTONES DE SUMA
-        // ================================
+        // ==================================================
+        // MODAL TE DAN
+        // ==================================================
 
         if (
-            interaction.customId.startsWith(
-                'suma_'
-            )
+            interaction.customId ===
+            'wfl_modal_recibes'
         ) {
 
-            const partes =
-                interaction.customId.split('_');
-
-            const accion =
-                partes[1];
-
-            const pagina =
-                Number(partes[2]);
-
-            // ============================
-            // CANCELAR
-            // ============================
-
-            if (accion === 'cancelar') {
-
-                const brainrots =
-                    await Brainrot.find()
-                        .sort({ nombre: 1 });
-
-                return interaction.update(
-                    crearPanelValores(
-                        brainrots,
-                        pagina
-                    )
+            const texto =
+                interaction.fields.getTextInputValue(
+                    'wfl_recibes_input'
                 );
-            }
 
-            // ============================
-            // CALCULAR
-            // ============================
-
-            if (accion === 'calcular') {
-
-                const ids =
-                    partes
-                        .slice(3)
-                        .join('_')
-                        .split(',');
-
-                try {
-
-                    const brainrots =
-                        await Brainrot.find({
-                            _id: {
-                                $in: ids
-                            }
-                        });
-
-                    if (!brainrots.length) {
-                        return interaction.reply({
-                            content:
-                                '❌ No se seleccionaron Brainrots válidos.',
-                            ephemeral: true
-                        });
-                    }
-
-                    let total = 0;
-
-                    const lista =
-                        brainrots.map(
-                            brainrot => {
-
-                                const valor =
-                                    parseFloat(
-                                        String(
-                                            brainrot.valor
-                                        ).replace(
-                                            ',',
-                                            '.'
-                                        )
-                                    );
-
-                                if (
-                                    Number.isNaN(
-                                        valor
-                                    )
-                                ) {
-                                    return `❌ ${brainrot.nombre} — valor inválido`;
-                                }
-
-                                total += valor;
-
-                                return `💎 **${brainrot.nombre}** — ${brainrot.valor}`;
-                            }
-                        );
-
-                    const totalFormateado =
-                        Number.isInteger(total)
-                            ? total.toString()
-                            : total.toFixed(10)
-                                .replace(
-                                    /0+$/,
-                                    ''
-                                )
-                                .replace(
-                                    /\.$/,
-                                    ''
-                                );
-
-                    const embed =
-                        new EmbedBuilder()
-                            .setTitle(
-                                '🧮 SUMA DE VALORES'
-                            )
-                            .setDescription(
-                                lista.join('\n') +
-                                `\n\n━━━━━━━━━━━━━━━━━━\n` +
-                                `💎 **TOTAL: ${totalFormateado}**`
-                            )
-                            .setTimestamp();
-
-                    return interaction.update({
-                        embeds: [embed],
-                        components: []
-                    });
-
-                } catch (error) {
-
-                    console.error(
-                        '❌ Error calculando suma:',
-                        error
-                    );
-
-                    return interaction.reply({
-                        content:
-                            '❌ Ocurrió un error al calcular la suma.',
-                        ephemeral: true
-                    });
-                }
-            }
-
-            // ============================
-            // PAGINACIÓN DE SUMA
-            // ============================
-
-            if (
-                accion === 'prev' ||
-                accion === 'next'
-            ) {
-
-                const brainrots =
-                    await Brainrot.find()
-                        .sort({ nombre: 1 });
-
-                let nuevaPagina =
-                    pagina;
-
-                if (accion === 'prev') {
-                    nuevaPagina--;
-                }
-
-                if (accion === 'next') {
-                    nuevaPagina++;
-                }
-
-                const totalPaginas =
-                    Math.ceil(
-                        brainrots.length / 25
-                    );
-
-                nuevaPagina =
-                    Math.max(
-                        0,
-                        Math.min(
-                            nuevaPagina,
-                            totalPaginas - 1
-                        )
-                    );
-
-                return interaction.update(
-                    crearPanelSuma(
-                        brainrots,
-                        nuevaPagina
-                    )
+            const lista =
+                await procesarLista(
+                    texto
                 );
+
+            let datos =
+                wflData.get(
+                    interaction.user.id
+                ) || {};
+
+            datos.recibes =
+                lista;
+
+            wflData.set(
+                interaction.user.id,
+                datos
+            );
+
+            const errores =
+                lista.filter(
+                    item => item.error
+                );
+
+            if (errores.length) {
+
+                return interaction.reply({
+                    content:
+                        '⚠️ Se guardó tu oferta, pero algunos Brainrots no fueron encontrados:\n\n' +
+                        errores
+                            .map(
+                                e =>
+                                    `❌ ${e.texto || e.nombre}`
+                            )
+                            .join('\n'),
+                    ephemeral: true
+                });
             }
+
+            await interaction.reply({
+                content:
+                    '✅ Se guardó correctamente lo que recibes.',
+                ephemeral: true
+            });
+
+            return;
         }
     }
 });
 
-// ================================
+// ==================================================
 // ?VALOR
-// ================================
+// ==================================================
 
 client.on('messageCreate', async message => {
 
@@ -1069,6 +1110,7 @@ client.on('messageCreate', async message => {
             .limit(25);
 
         if (!brainrots.length) {
+
             return message.reply(
                 `❌ No encontré ningún Brainrot relacionado con **${busqueda}**.`
             );
@@ -1151,9 +1193,9 @@ client.on('messageCreate', async message => {
     }
 });
 
-// ================================
+// ==================================================
 // ?VALORES
-// ================================
+// ==================================================
 
 client.on('messageCreate', async message => {
 
@@ -1174,17 +1216,73 @@ client.on('messageCreate', async message => {
                 .sort({ nombre: 1 });
 
         if (!brainrots.length) {
+
             return message.reply(
                 '❌ No hay Brainrots registrados todavía.'
             );
         }
 
-        await message.reply(
-            crearPanelValores(
-                brainrots,
-                0
-            )
-        );
+        const porPagina = 25;
+
+        const pagina = 0;
+
+        const totalPaginas =
+            Math.ceil(
+                brainrots.length /
+                porPagina
+            );
+
+        const lista =
+            brainrots.slice(
+                0,
+                porPagina
+            );
+
+        const opciones =
+            lista.map(brainrot => ({
+                label:
+                    brainrot.nombre.substring(
+                        0,
+                        100
+                    ),
+                value:
+                    brainrot._id.toString()
+            }));
+
+        const menu =
+            new StringSelectMenuBuilder()
+                .setCustomId(
+                    'valores_select'
+                )
+                .setPlaceholder(
+                    '🔎 Busca o selecciona un Brainrot'
+                )
+                .addOptions(
+                    opciones
+                );
+
+        const fila =
+            new ActionRowBuilder()
+                .addComponents(
+                    menu
+                );
+
+        const embed =
+            new EmbedBuilder()
+                .setTitle(
+                    '📚 VALORES DE BRAINROTS'
+                )
+                .setDescription(
+                    '🔎 **Selecciona un Brainrot para consultar su información.**\n\n' +
+                    `📦 Brainrots registrados: **${brainrots.length}**\n` +
+                    `📄 Página: **${pagina + 1}/${totalPaginas}**`
+                )
+                .setTimestamp();
+
+        await message.reply({
+            embeds: [embed],
+            components: [fila]
+        });
 
     } catch (error) {
 
@@ -1199,8 +1297,145 @@ client.on('messageCreate', async message => {
     }
 });
 
-// ================================
+// ==================================================
+// ?WFL
+// ==================================================
+
+client.on('messageCreate', async message => {
+
+    if (message.author.bot) return;
+
+    if (
+        message.content
+            .toLowerCase()
+            .trim() !== '?wfl'
+    ) {
+        return;
+    }
+
+    wflData.delete(
+        message.author.id
+    );
+
+    await message.reply(
+        crearPanelWFL()
+    );
+});
+
+// ==================================================
+// BOTONES DE ?VALOR
+// ==================================================
+
+client.on('interactionCreate', async interaction => {
+
+    if (!interaction.isButton()) return;
+
+    if (
+        !interaction.customId.startsWith(
+            'brainrot_'
+        )
+    ) {
+        return;
+    }
+
+    const id =
+        interaction.customId.replace(
+            'brainrot_',
+            ''
+        );
+
+    try {
+
+        const brainrot =
+            await Brainrot.findById(id);
+
+        if (!brainrot) {
+
+            return interaction.reply({
+                content:
+                    '❌ Ese Brainrot ya no existe.',
+                ephemeral: true
+            });
+        }
+
+        await interaction.reply({
+            embeds: [
+                crearEmbedBrainrot(
+                    brainrot
+                )
+            ],
+            ephemeral: true
+        });
+
+    } catch (error) {
+
+        console.error(error);
+
+        await interaction.reply({
+            content:
+                '❌ Ocurrió un error.',
+            ephemeral: true
+        });
+    }
+});
+
+// ==================================================
+// SELECTOR DE ?VALORES
+// ==================================================
+
+client.on('interactionCreate', async interaction => {
+
+    if (!interaction.isStringSelectMenu()) {
+        return;
+    }
+
+    if (
+        interaction.customId !==
+        'valores_select'
+    ) {
+        return;
+    }
+
+    const id =
+        interaction.values[0];
+
+    try {
+
+        const brainrot =
+            await Brainrot.findById(id);
+
+        if (!brainrot) {
+
+            return interaction.reply({
+                content:
+                    '❌ Ese Brainrot ya no existe.',
+                ephemeral: true
+            });
+        }
+
+        await interaction.reply({
+            embeds: [
+                crearEmbedBrainrot(
+                    brainrot
+                )
+            ],
+            ephemeral: true
+        });
+
+    } catch (error) {
+
+        console.error(error);
+
+        await interaction.reply({
+            content:
+                '❌ Ocurrió un error.',
+            ephemeral: true
+        });
+    }
+});
+
+// ==================================================
 // LOGIN
-// ================================
+// ==================================================
 
 client.login(process.env.TOKEN);
