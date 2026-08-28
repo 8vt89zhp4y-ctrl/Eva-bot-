@@ -4,6 +4,7 @@ const {
     EmbedBuilder,
     SlashCommandBuilder,
     ActionRowBuilder,
+    StringSelectMenuBuilder,
     ButtonBuilder,
     ButtonStyle
 } = require('discord.js');
@@ -176,6 +177,114 @@ client.once('ready', async () => {
 });
 
 // ================================
+// FUNCIÓN PARA CREAR EMBED
+// ================================
+
+function crearEmbedBrainrot(brainrot) {
+
+    const fecha = brainrot.updatedAt || brainrot.createdAt;
+
+    const timestamp = Math.floor(
+        fecha.getTime() / 1000
+    );
+
+    return new EmbedBuilder()
+        .setDescription(
+            `🕐 **Última actualización:** <t:${timestamp}:F>`
+        )
+        .setTitle(`🛠️ ${brainrot.nombre}`)
+        .setImage(brainrot.imagen)
+        .addFields(
+            {
+                name: '💎 Valor',
+                value: brainrot.valor,
+                inline: true
+            },
+            {
+                name: '📊 Demanda',
+                value: brainrot.demanda,
+                inline: true
+            },
+            {
+                name: '💲 Precio',
+                value: `${brainrot.precio} Robux`,
+                inline: true
+            }
+        )
+        .setTimestamp();
+}
+
+// ================================
+// CREAR PANEL ?VALORES
+// ================================
+
+function crearPanelValores(brainrots, pagina) {
+
+    const porPagina = 25;
+
+    const totalPaginas = Math.ceil(
+        brainrots.length / porPagina
+    );
+
+    const inicio = pagina * porPagina;
+
+    const lista = brainrots.slice(
+        inicio,
+        inicio + porPagina
+    );
+
+    const opciones = lista.map(brainrot => ({
+        label: brainrot.nombre.substring(0, 100),
+        value: brainrot._id.toString()
+    }));
+
+    const menu = new StringSelectMenuBuilder()
+        .setCustomId(`valores_select_${pagina}`)
+        .setPlaceholder('🔎 Busca o selecciona un Brainrot')
+        .addOptions(opciones);
+
+    const filaMenu = new ActionRowBuilder()
+        .addComponents(menu);
+
+    const botonAnterior = new ButtonBuilder()
+        .setCustomId(`valores_prev_${pagina}`)
+        .setLabel('Anterior')
+        .setEmoji('◀️')
+        .setStyle(ButtonStyle.Secondary)
+        .setDisabled(pagina === 0);
+
+    const botonSiguiente = new ButtonBuilder()
+        .setCustomId(`valores_next_${pagina}`)
+        .setLabel('Siguiente')
+        .setEmoji('▶️')
+        .setStyle(ButtonStyle.Secondary)
+        .setDisabled(pagina >= totalPaginas - 1);
+
+    const filaBotones = new ActionRowBuilder()
+        .addComponents(
+            botonAnterior,
+            botonSiguiente
+        );
+
+    const embed = new EmbedBuilder()
+        .setTitle('📚 VALORES DE BRAINROTS')
+        .setDescription(
+            '🔎 **Selecciona un Brainrot para consultar su información.**\n\n' +
+            `📦 Brainrots registrados: **${brainrots.length}**\n` +
+            `📄 Página: **${pagina + 1}/${totalPaginas}**`
+        )
+        .setTimestamp();
+
+    return {
+        embeds: [embed],
+        components: [
+            filaMenu,
+            filaBotones
+        ]
+    };
+}
+
+// ================================
 // INTERACCIONES
 // ================================
 
@@ -201,11 +310,9 @@ client.on('interactionCreate', async interaction => {
 
             let precio = interaction.options.getString('precio');
 
-            // Reemplazar coma por punto por si escriben 4,2
             valor = valor.replace(',', '.');
             precio = precio.replace(',', '.');
 
-            // Validar valor
             if (!validarNumero(valor)) {
                 return interaction.reply({
                     content: '❌ El valor debe ser un número. Ejemplo: `4.2`',
@@ -213,7 +320,6 @@ client.on('interactionCreate', async interaction => {
                 });
             }
 
-            // Validar precio
             if (!validarNumero(precio)) {
                 return interaction.reply({
                     content: '❌ El precio debe ser un número. Ejemplo: `4.2`',
@@ -231,34 +337,7 @@ client.on('interactionCreate', async interaction => {
                     precio
                 });
 
-                const timestamp = Math.floor(
-                    brainrot.createdAt.getTime() / 1000
-                );
-
-                const embed = new EmbedBuilder()
-                    .setDescription(
-                        `🕐 **Última actualización:** <t:${timestamp}:F>`
-                    )
-                    .setTitle(`🛠️ ${nombre}`)
-                    .setImage(imagen.url)
-                    .addFields(
-                        {
-                            name: '💎 Valor',
-                            value: valor,
-                            inline: true
-                        },
-                        {
-                            name: '📊 Demanda',
-                            value: demanda,
-                            inline: true
-                        },
-                        {
-                            name: '💲 Precio',
-                            value: `${precio} Robux`,
-                            inline: true
-                        }
-                    )
-                    .setTimestamp();
+                const embed = crearEmbedBrainrot(brainrot);
 
                 await interaction.channel.send({
                     embeds: [embed]
@@ -277,7 +356,8 @@ client.on('interactionCreate', async interaction => {
                 );
 
                 await interaction.reply({
-                    content: '❌ Ocurrió un error al guardar el Brainrot.',
+                    content:
+                        '❌ Ocurrió un error al guardar el Brainrot.',
                     ephemeral: true
                 });
             }
@@ -346,34 +426,7 @@ client.on('interactionCreate', async interaction => {
 
                 await brainrot.save();
 
-                const timestamp = Math.floor(
-                    brainrot.updatedAt.getTime() / 1000
-                );
-
-                const embed = new EmbedBuilder()
-                    .setDescription(
-                        `🕐 **Última actualización:** <t:${timestamp}:F>`
-                    )
-                    .setTitle(`🛠️ ${brainrot.nombre}`)
-                    .setImage(brainrot.imagen)
-                    .addFields(
-                        {
-                            name: '💎 Valor',
-                            value: brainrot.valor,
-                            inline: true
-                        },
-                        {
-                            name: '📊 Demanda',
-                            value: brainrot.demanda,
-                            inline: true
-                        },
-                        {
-                            name: '💲 Precio',
-                            value: `${brainrot.precio} Robux`,
-                            inline: true
-                        }
-                    )
-                    .setTimestamp();
+                const embed = crearEmbedBrainrot(brainrot);
 
                 await interaction.channel.send({
                     embeds: [embed]
@@ -404,68 +457,46 @@ client.on('interactionCreate', async interaction => {
     }
 
     // ================================
-    // BOTONES DE ?VALOR
+    // SELECTOR DE ?VALORES
     // ================================
 
-    if (interaction.isButton()) {
+    if (interaction.isStringSelectMenu()) {
 
-        if (!interaction.customId.startsWith('brainrot_')) {
+        if (
+            !interaction.customId.startsWith(
+                'valores_select_'
+            )
+        ) {
             return;
         }
 
-        const brainrotId = interaction.customId.replace(
-            'brainrot_',
-            ''
-        );
+        const brainrotId = interaction.values[0];
 
         try {
 
-            const brainrot = await Brainrot.findById(brainrotId);
+            const brainrot = await Brainrot.findById(
+                brainrotId
+            );
 
             if (!brainrot) {
                 return interaction.reply({
-                    content: '❌ Ese Brainrot ya no existe.',
+                    content:
+                        '❌ Ese Brainrot ya no existe.',
                     ephemeral: true
                 });
             }
 
-            const timestamp = Math.floor(
-                brainrot.updatedAt.getTime() / 1000
-            );
-
-            const embed = new EmbedBuilder()
-                .setDescription(
-                    `🕐 **Última actualización:** <t:${timestamp}:F>`
-                )
-                .setTitle(`🛠️ ${brainrot.nombre}`)
-                .setImage(brainrot.imagen)
-                .addFields(
-                    {
-                        name: '💎 Valor',
-                        value: brainrot.valor,
-                        inline: true
-                    },
-                    {
-                        name: '📊 Demanda',
-                        value: brainrot.demanda,
-                        inline: true
-                    },
-                    {
-                        name: '💲 Precio',
-                        value: `${brainrot.precio} Robux`,
-                        inline: true
-                    }
-                )
-                .setTimestamp();
+            const embed = crearEmbedBrainrot(brainrot);
 
             await interaction.reply({
-                embeds: [embed]
+                embeds: [embed],
+                ephemeral: true
             });
 
         } catch (error) {
 
             console.error(
-                '❌ Error mostrando Brainrot:',
+                '❌ Error seleccionando Brainrot:',
                 error
             );
 
@@ -475,6 +506,91 @@ client.on('interactionCreate', async interaction => {
                 ephemeral: true
             });
         }
+
+        return;
+    }
+
+    // ================================
+    // BOTONES DEL PANEL
+    // ================================
+
+    if (interaction.isButton()) {
+
+        if (
+            !interaction.customId.startsWith(
+                'valores_'
+            )
+        ) {
+            return;
+        }
+
+        const partes = interaction.customId.split('_');
+
+        const accion = partes[1];
+        const paginaActual = Number(partes[2]);
+
+        try {
+
+            const brainrots = await Brainrot.find()
+                .sort({ nombre: 1 });
+
+            if (brainrots.length === 0) {
+                return interaction.update({
+                    embeds: [
+                        new EmbedBuilder()
+                            .setTitle('📚 VALORES DE BRAINROTS')
+                            .setDescription(
+                                '❌ No hay Brainrots registrados todavía.'
+                            )
+                    ],
+                    components: []
+                });
+            }
+
+            let nuevaPagina = paginaActual;
+
+            if (accion === 'prev') {
+                nuevaPagina--;
+            }
+
+            if (accion === 'next') {
+                nuevaPagina++;
+            }
+
+            const totalPaginas = Math.ceil(
+                brainrots.length / 25
+            );
+
+            if (nuevaPagina < 0) {
+                nuevaPagina = 0;
+            }
+
+            if (nuevaPagina >= totalPaginas) {
+                nuevaPagina = totalPaginas - 1;
+            }
+
+            const panel = crearPanelValores(
+                brainrots,
+                nuevaPagina
+            );
+
+            await interaction.update(panel);
+
+        } catch (error) {
+
+            console.error(
+                '❌ Error cambiando página:',
+                error
+            );
+
+            await interaction.reply({
+                content:
+                    '❌ Ocurrió un error al cambiar de página.',
+                ephemeral: true
+            });
+        }
+
+        return;
     }
 });
 
@@ -509,7 +625,10 @@ client.on('messageCreate', async message => {
 
         const regex = palabras
             .map(palabra =>
-                palabra.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+                palabra.replace(
+                    /[.*+?^${}()|[\]\\]/g,
+                    '\\$&'
+                )
             )
             .join('.*');
 
@@ -532,36 +651,9 @@ client.on('messageCreate', async message => {
 
         if (brainrots.length === 1) {
 
-            const brainrot = brainrots[0];
-
-            const timestamp = Math.floor(
-                brainrot.updatedAt.getTime() / 1000
+            const embed = crearEmbedBrainrot(
+                brainrots[0]
             );
-
-            const embed = new EmbedBuilder()
-                .setDescription(
-                    `🕐 **Última actualización:** <t:${timestamp}:F>`
-                )
-                .setTitle(`🛠️ ${brainrot.nombre}`)
-                .setImage(brainrot.imagen)
-                .addFields(
-                    {
-                        name: '💎 Valor',
-                        value: brainrot.valor,
-                        inline: true
-                    },
-                    {
-                        name: '📊 Demanda',
-                        value: brainrot.demanda,
-                        inline: true
-                    },
-                    {
-                        name: '💲 Precio',
-                        value: `${brainrot.precio} Robux`,
-                        inline: true
-                    }
-                )
-                .setTimestamp();
 
             return message.reply({
                 embeds: [embed]
@@ -574,14 +666,24 @@ client.on('messageCreate', async message => {
 
         const botones = brainrots.map(brainrot =>
             new ButtonBuilder()
-                .setCustomId(`brainrot_${brainrot._id}`)
-                .setLabel(brainrot.nombre.substring(0, 80))
-                .setStyle(ButtonStyle.Secondary)
+                .setCustomId(
+                    `brainrot_${brainrot._id}`
+                )
+                .setLabel(
+                    brainrot.nombre.substring(0, 80)
+                )
+                .setStyle(
+                    ButtonStyle.Secondary
+                )
         );
 
         const filas = [];
 
-        for (let i = 0; i < botones.length; i += 5) {
+        for (
+            let i = 0;
+            i < botones.length;
+            i += 5
+        ) {
 
             filas.push(
                 new ActionRowBuilder().addComponents(
@@ -613,6 +715,49 @@ client.on('messageCreate', async message => {
 
         await message.reply(
             '❌ Ocurrió un error al buscar el Brainrot.'
+        );
+    }
+});
+
+// ================================
+// ?VALORES
+// ================================
+
+client.on('messageCreate', async message => {
+
+    if (message.author.bot) return;
+
+    if (message.content.toLowerCase().trim() !== '?valores') {
+        return;
+    }
+
+    try {
+
+        const brainrots = await Brainrot.find()
+            .sort({ nombre: 1 });
+
+        if (brainrots.length === 0) {
+            return message.reply(
+                '❌ No hay Brainrots registrados todavía.'
+            );
+        }
+
+        const panel = crearPanelValores(
+            brainrots,
+            0
+        );
+
+        await message.reply(panel);
+
+    } catch (error) {
+
+        console.error(
+            '❌ Error creando panel de valores:',
+            error
+        );
+
+        await message.reply(
+            '❌ Ocurrió un error al cargar los valores.'
         );
     }
 });
