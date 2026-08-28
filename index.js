@@ -237,36 +237,36 @@ client.once('ready', async () => {
 
 async function buscarBrainrot(nombre) {
 
-    let texto = nombre
-        .trim()
-        .toLowerCase()
-        .normalize('NFD')
-        .replace(/[\u0300-\u036f]/g, '');
+    // Quitar acentos y normalizar
+    const normalizar = texto =>
+        texto
+            .trim()
+            .toLowerCase()
+            .normalize('NFD')
+            .replace(/[\u0300-\u036f]/g, '');
+
+    let texto = normalizar(nombre);
 
     if (!texto) return null;
 
-    // Quitar espacios extras
-    texto = texto.replace(/\s+/g, ' ');
-
-    // Escapar caracteres especiales
-    const escaparRegex = texto =>
-        texto.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-
     // ================================
-    // 1. COINCIDENCIA EXACTA
+    // OBTENER BRAINROTS
     // ================================
 
-    let brainrot = await Brainrot.findOne({
-        nombre: {
-            $regex: `^${escaparRegex(texto)}$`,
-            $options: 'i'
-        }
-    });
+    const brainrots = await Brainrot.find();
+
+    // ================================
+    // BUSCAR COINCIDENCIA EXACTA
+    // ================================
+
+    let brainrot = brainrots.find(
+        b => normalizar(b.nombre) === texto
+    );
 
     if (brainrot) return brainrot;
 
     // ================================
-    // 2. QUITAR PLURAL
+    // QUITAR PLURAL
     // ================================
 
     let singular = texto;
@@ -277,42 +277,31 @@ async function buscarBrainrot(nombre) {
         singular = singular.slice(0, -1);
     }
 
-    brainrot = await Brainrot.findOne({
-        nombre: {
-            $regex: `^${escaparRegex(singular)}$`,
-            $options: 'i'
-        }
-    });
+    brainrot = brainrots.find(
+        b => normalizar(b.nombre) === singular
+    );
 
     if (brainrot) return brainrot;
 
     // ================================
-    // 3. BÚSQUEDA PARCIAL
+    // BUSCAR PARCIALMENTE
     // ================================
 
-    brainrot = await Brainrot.findOne({
-        nombre: {
-            $regex: escaparRegex(texto),
-            $options: 'i'
-        }
-    });
+    brainrot = brainrots.find(
+        b => normalizar(b.nombre).includes(texto)
+    );
 
     if (brainrot) return brainrot;
 
     // ================================
-    // 4. BÚSQUEDA CON SINGULAR
+    // BUSCAR PARCIAL CON SINGULAR
     // ================================
 
-    brainrot = await Brainrot.findOne({
-        nombre: {
-            $regex: escaparRegex(singular),
-            $options: 'i'
-        }
-    });
+    brainrot = brainrots.find(
+        b => normalizar(b.nombre).includes(singular)
+    );
 
-    if (brainrot) return brainrot;
-
-    return null;
+    return brainrot || null;
 }
 
 // ==================================================
