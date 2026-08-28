@@ -237,31 +237,82 @@ client.once('ready', async () => {
 
 async function buscarBrainrot(nombre) {
 
-    const texto = nombre
+    let texto = nombre
         .trim()
-        .toLowerCase();
+        .toLowerCase()
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '');
 
     if (!texto) return null;
 
-    // Primero intenta coincidencia exacta
+    // Quitar espacios extras
+    texto = texto.replace(/\s+/g, ' ');
+
+    // Escapar caracteres especiales
+    const escaparRegex = texto =>
+        texto.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+    // ================================
+    // 1. COINCIDENCIA EXACTA
+    // ================================
+
     let brainrot = await Brainrot.findOne({
         nombre: {
-            $regex: `^${texto.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`,
+            $regex: `^${escaparRegex(texto)}$`,
             $options: 'i'
         }
     });
 
     if (brainrot) return brainrot;
 
-    // Después busca coincidencia parcial
+    // ================================
+    // 2. QUITAR PLURAL
+    // ================================
+
+    let singular = texto;
+
+    if (singular.endsWith('es')) {
+        singular = singular.slice(0, -2);
+    } else if (singular.endsWith('s')) {
+        singular = singular.slice(0, -1);
+    }
+
     brainrot = await Brainrot.findOne({
         nombre: {
-            $regex: texto.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'),
+            $regex: `^${escaparRegex(singular)}$`,
             $options: 'i'
         }
     });
 
-    return brainrot;
+    if (brainrot) return brainrot;
+
+    // ================================
+    // 3. BÚSQUEDA PARCIAL
+    // ================================
+
+    brainrot = await Brainrot.findOne({
+        nombre: {
+            $regex: escaparRegex(texto),
+            $options: 'i'
+        }
+    });
+
+    if (brainrot) return brainrot;
+
+    // ================================
+    // 4. BÚSQUEDA CON SINGULAR
+    // ================================
+
+    brainrot = await Brainrot.findOne({
+        nombre: {
+            $regex: escaparRegex(singular),
+            $options: 'i'
+        }
+    });
+
+    if (brainrot) return brainrot;
+
+    return null;
 }
 
 // ==================================================
