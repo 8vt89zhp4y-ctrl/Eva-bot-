@@ -73,23 +73,56 @@ function validarNumero(numero) {
 }
 
 // ================================
+// NORMALIZAR TEXTO
+// ================================
+
+function normalizarTexto(texto) {
+
+    return texto
+        .trim()
+        .toLowerCase()
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .replace(/\s+/g, ' ');
+}
+
+// ================================
+// ESCAPAR REGEX
+// ================================
+
+function escaparRegex(texto) {
+
+    return texto.replace(
+        /[.*+?^${}()|[\]\\]/g,
+        '\\$&'
+    );
+}
+
+// ================================
 // EMBED BRAINROT
 // ================================
 
 function crearEmbedBrainrot(brainrot) {
 
-    const fecha = brainrot.updatedAt || brainrot.createdAt;
+    const fecha =
+        brainrot.updatedAt ||
+        brainrot.createdAt;
 
-    const timestamp = Math.floor(
-        fecha.getTime() / 1000
-    );
+    const timestamp =
+        Math.floor(
+            fecha.getTime() / 1000
+        );
 
     return new EmbedBuilder()
         .setDescription(
             `🕐 **Última actualización:** <t:${timestamp}:F>`
         )
-        .setTitle(`🛠️ ${brainrot.nombre}`)
-        .setImage(brainrot.imagen)
+        .setTitle(
+            `🛠️ ${brainrot.nombre}`
+        )
+        .setImage(
+            brainrot.imagen
+        )
         .addFields(
             {
                 name: '💎 Valor',
@@ -110,196 +143,148 @@ function crearEmbedBrainrot(brainrot) {
         .setTimestamp();
 }
 
-// ================================
-// /ADD
-// ================================
-
-const addCommand = new SlashCommandBuilder()
-    .setName('add')
-    .setDescription('Añade un Brainrot')
-    .addStringOption(option =>
-        option
-            .setName('nombre')
-            .setDescription('Nombre del Brainrot')
-            .setRequired(true)
-    )
-    .addAttachmentOption(option =>
-        option
-            .setName('imagen')
-            .setDescription('Imagen del Brainrot')
-            .setRequired(true)
-    )
-    .addStringOption(option =>
-        option
-            .setName('valor')
-            .setDescription('Valor. Ejemplo: 4.2')
-            .setRequired(true)
-    )
-    .addStringOption(option =>
-        option
-            .setName('demanda')
-            .setDescription('Demanda del Brainrot')
-            .setRequired(true)
-    )
-    .addStringOption(option =>
-        option
-            .setName('precio')
-            .setDescription('Precio en Robux')
-            .setRequired(true)
-    );
-
-// ================================
-// /UPDATE
-// ================================
-
-const updateCommand = new SlashCommandBuilder()
-    .setName('update')
-    .setDescription('Actualiza un Brainrot existente')
-    .addStringOption(option =>
-        option
-            .setName('nombre')
-            .setDescription('Nombre actual del Brainrot')
-            .setRequired(true)
-    )
-    .addAttachmentOption(option =>
-        option
-            .setName('imagen')
-            .setDescription('Nueva imagen')
-            .setRequired(true)
-    )
-    .addStringOption(option =>
-        option
-            .setName('valor')
-            .setDescription('Nuevo valor. Ejemplo: 4.2')
-            .setRequired(true)
-    )
-    .addStringOption(option =>
-        option
-            .setName('demanda')
-            .setDescription('Nueva demanda')
-            .setRequired(true)
-    )
-    .addStringOption(option =>
-        option
-            .setName('precio')
-            .setDescription('Nuevo precio en Robux')
-            .setRequired(true)
-    );
-
-// ================================
-// CONEXIÓN MONGODB
-// ================================
-
-mongoose.connect(process.env.MONGO_URI)
-    .then(() => {
-        console.log('✅ Conectado a MongoDB');
-    })
-    .catch(error => {
-        console.error(
-            '❌ Error conectando a MongoDB:',
-            error
-        );
-    });
-
-// ================================
-// BOT LISTO
-// ================================
-
-client.once('ready', async () => {
-
-    console.log(
-        `✅ Bot conectado como ${client.user.tag}`
-    );
-
-    try {
-
-        await client.application.commands.set([
-            addCommand.toJSON(),
-            updateCommand.toJSON()
-        ]);
-
-        console.log(
-            '✅ Comandos /add y /update registrados correctamente'
-        );
-
-    } catch (error) {
-
-        console.error(
-            '❌ Error registrando comandos:',
-            error
-        );
-    }
-});
-
 // ==================================================
-// FUNCIÓN PARA BUSCAR BRAINROT POR NOMBRE
+// BUSCAR BRAINROT
 // ==================================================
 
 async function buscarBrainrot(nombre) {
 
-    // Quitar acentos y normalizar
-    const normalizar = texto =>
-        texto
-            .trim()
-            .toLowerCase()
-            .normalize('NFD')
-            .replace(/[\u0300-\u036f]/g, '');
+    const texto =
+        normalizarTexto(nombre);
 
-    let texto = normalizar(nombre);
+    if (!texto) {
+        return null;
+    }
 
-    if (!texto) return null;
+    const brainrots =
+        await Brainrot.find();
 
-    // ================================
-    // OBTENER BRAINROTS
-    // ================================
+    // ========================================
+    // COINCIDENCIA EXACTA
+    // ========================================
 
-    const brainrots = await Brainrot.find();
+    let brainrot =
+        brainrots.find(
+            b =>
+                normalizarTexto(
+                    b.nombre
+                ) === texto
+        );
 
-    // ================================
-    // BUSCAR COINCIDENCIA EXACTA
-    // ================================
+    if (brainrot) {
+        return brainrot;
+    }
 
-    let brainrot = brainrots.find(
-        b => normalizar(b.nombre) === texto
-    );
-
-    if (brainrot) return brainrot;
-
-    // ================================
+    // ========================================
     // QUITAR PLURAL
-    // ================================
+    // ========================================
 
     let singular = texto;
 
     if (singular.endsWith('es')) {
-        singular = singular.slice(0, -2);
-    } else if (singular.endsWith('s')) {
-        singular = singular.slice(0, -1);
+
+        singular =
+            singular.slice(
+                0,
+                -2
+            );
+
+    } else if (
+        singular.endsWith('s')
+    ) {
+
+        singular =
+            singular.slice(
+                0,
+                -1
+            );
     }
 
-    brainrot = brainrots.find(
-        b => normalizar(b.nombre) === singular
-    );
+    brainrot =
+        brainrots.find(
+            b =>
+                normalizarTexto(
+                    b.nombre
+                ) === singular
+        );
 
-    if (brainrot) return brainrot;
+    if (brainrot) {
+        return brainrot;
+    }
 
-    // ================================
-    // BUSCAR PARCIALMENTE
-    // ================================
+    // ========================================
+    // COMPARAR PALABRA POR PALABRA
+    // ========================================
 
-    brainrot = brainrots.find(
-        b => normalizar(b.nombre).includes(texto)
-    );
+    const palabrasBuscadas =
+        singular
+            .split(' ')
+            .filter(Boolean);
 
-    if (brainrot) return brainrot;
+    brainrot =
+        brainrots.find(b => {
 
-    // ================================
-    // BUSCAR PARCIAL CON SINGULAR
-    // ================================
+            const palabrasBrainrot =
+                normalizarTexto(
+                    b.nombre
+                )
+                    .split(' ')
+                    .filter(Boolean);
 
-    brainrot = brainrots.find(
-        b => normalizar(b.nombre).includes(singular)
-    );
+            return palabrasBuscadas.every(
+                palabraBuscada =>
+
+                    palabrasBrainrot.some(
+                        palabraBrainrot =>
+
+                            palabraBrainrot ===
+                                palabraBuscada ||
+
+                            palabraBrainrot.startsWith(
+                                palabraBuscada
+                            ) ||
+
+                            palabraBuscada.startsWith(
+                                palabraBrainrot
+                            )
+                    )
+            );
+        });
+
+    if (brainrot) {
+        return brainrot;
+    }
+
+    // ========================================
+    // BÚSQUEDA PARCIAL
+    // ========================================
+
+    brainrot =
+        brainrots.find(b => {
+
+            const nombreNormalizado =
+                normalizarTexto(
+                    b.nombre
+                );
+
+            return (
+                nombreNormalizado.includes(
+                    texto
+                ) ||
+
+                nombreNormalizado.includes(
+                    singular
+                ) ||
+
+                texto.includes(
+                    nombreNormalizado
+                ) ||
+
+                singular.includes(
+                    nombreNormalizado
+                )
+            );
+        });
 
     return brainrot || null;
 }
@@ -310,32 +295,39 @@ async function buscarBrainrot(nombre) {
 
 async function procesarLista(texto) {
 
-    const lineas = texto
-        .split(/[\n,]+/)
-        .map(linea => linea.trim())
-        .filter(Boolean);
+    const lineas =
+        texto
+            .split(/[\n,]+/)
+            .map(
+                linea =>
+                    linea.trim()
+            )
+            .filter(Boolean);
 
     const resultados = [];
 
     for (const linea of lineas) {
 
         /*
-        Formatos aceptados:
+        Ejemplos:
 
         10 garamas
         3 skibidis
-        2 dragones
+        2 dragon gold
 
         También:
+
         10x garamas
         10 x garamas
         */
 
-        const coincidencia = linea.match(
-            /^(\d+(?:\.\d+)?)\s*(?:x\s*)?(.+)$/i
-        );
+        const coincidencia =
+            linea.match(
+                /^(\d+(?:[.,]\d+)?)\s*(?:x\s*)?(.+)$/i
+            );
 
         if (!coincidencia) {
+
             resultados.push({
                 texto: linea,
                 error: true
@@ -344,15 +336,19 @@ async function procesarLista(texto) {
             continue;
         }
 
-        const cantidad = parseFloat(
-            coincidencia[1]
-        );
+        const cantidad =
+            parseFloat(
+                coincidencia[1]
+                    .replace(',', '.')
+            );
 
         const nombreBuscado =
             coincidencia[2].trim();
 
         const brainrot =
-            await buscarBrainrot(nombreBuscado);
+            await buscarBrainrot(
+                nombreBuscado
+            );
 
         if (!brainrot) {
 
@@ -367,11 +363,17 @@ async function procesarLista(texto) {
 
         const valorUnitario =
             parseFloat(
-                String(brainrot.valor)
+                String(
+                    brainrot.valor
+                )
                     .replace(',', '.')
             );
 
-        if (Number.isNaN(valorUnitario)) {
+        if (
+            Number.isNaN(
+                valorUnitario
+            )
+        ) {
 
             resultados.push({
                 texto: linea,
@@ -383,7 +385,8 @@ async function procesarLista(texto) {
         }
 
         const valorTotal =
-            cantidad * valorUnitario;
+            cantidad *
+            valorUnitario;
 
         resultados.push({
             cantidad,
@@ -410,7 +413,8 @@ function calcularTotal(lista) {
                 return total;
             }
 
-            return total + item.valorTotal;
+            return total +
+                item.valorTotal;
 
         },
         0
@@ -423,7 +427,9 @@ function calcularTotal(lista) {
 
 function formatearNumero(numero) {
 
-    if (Number.isInteger(numero)) {
+    if (
+        Number.isInteger(numero)
+    ) {
         return numero.toString();
     }
 
@@ -445,14 +451,20 @@ function crearEmbedWFL(datos) {
     let resultado;
     let emoji;
 
-    const tolerancia = 0.000001;
+    const tolerancia =
+        0.000001;
 
-    if (Math.abs(diferencia) <= tolerancia) {
+    if (
+        Math.abs(diferencia) <=
+        tolerancia
+    ) {
 
         resultado = 'FAIR';
         emoji = '🟡';
 
-    } else if (diferencia > 0) {
+    } else if (
+        diferencia > 0
+    ) {
 
         resultado = 'WIN';
         emoji = '🟢';
@@ -468,10 +480,15 @@ function crearEmbedWFL(datos) {
             .map(item => {
 
                 if (item.error) {
-                    return `❌ **${item.texto}** — no encontrado`;
+
+                    return (
+                        `❌ **${item.texto}** — no encontrado`
+                    );
                 }
 
-                return `• ${item.cantidad}x **${item.nombre}** — ${formatearNumero(item.valorTotal)}`;
+                return (
+                    `• ${item.cantidad}x **${item.nombre}** — ${formatearNumero(item.valorTotal)}`
+                );
             })
             .join('\n');
 
@@ -480,15 +497,22 @@ function crearEmbedWFL(datos) {
             .map(item => {
 
                 if (item.error) {
-                    return `❌ **${item.texto}** — no encontrado`;
+
+                    return (
+                        `❌ **${item.texto}** — no encontrado`
+                    );
                 }
 
-                return `• ${item.cantidad}x **${item.nombre}** — ${formatearNumero(item.valorTotal)}`;
+                return (
+                    `• ${item.cantidad}x **${item.nombre}** — ${formatearNumero(item.valorTotal)}`
+                );
             })
             .join('\n');
 
     return new EmbedBuilder()
-        .setTitle(`${emoji} WFL — ${resultado}`)
+        .setTitle(
+            `${emoji} WFL — ${resultado}`
+        )
         .addFields(
             {
                 name: '🟢 TÚ DAS',
@@ -520,57 +544,98 @@ function crearEmbedWFL(datos) {
 
 function crearPanelWFL() {
 
-    const embed = new EmbedBuilder()
-        .setTitle('⚖️ WFL — CALCULADORA DE TRADES')
-        .setDescription(
-            'Compara el valor de un intercambio usando los Brainrots registrados.\n\n' +
+    const embed =
+        new EmbedBuilder()
+            .setTitle(
+                '⚖️ WFL — CALCULADORA DE TRADES'
+            )
+            .setDescription(
+                'Compara el valor de un intercambio usando los Brainrots registrados.\n\n' +
 
-            '🟢 **TÚ DAS**\n' +
-            'Escribe los Brainrots que estás dando.\n' +
-            'Ejemplo: `10 garamas, 3 skibidis`\n\n' +
+                '🟢 **TÚ DAS**\n' +
+                'Escribe los Brainrots que estás dando.\n' +
+                'Ejemplo: `10 garamas, 3 skibidis`\n\n' +
 
-            '🔵 **TE DAN**\n' +
-            'Escribe los Brainrots que vas a recibir.\n' +
-            'Ejemplo: `1 dragón, 5 garamas`\n\n' +
+                '🔵 **TE DAN**\n' +
+                'Escribe los Brainrots que vas a recibir.\n' +
+                'Ejemplo: `1 dragon gold, 5 garamas`\n\n' +
 
-            '💡 Puedes poner cantidades diferentes.\n' +
-            'Ejemplo: `10 garamas` significa **10 × valor de Garama**.'
-        )
-        .setFooter({
-            text: 'Los valores utilizados son los registrados en /add'
-        });
+                '💡 Puedes poner cantidades diferentes.\n' +
+                'También puedes usar nombres con varias palabras.'
+            )
+            .setFooter({
+                text:
+                    'Los valores utilizados son los registrados en /add'
+            });
 
-    const darButton = new ButtonBuilder()
-        .setCustomId('wfl_das')
-        .setLabel('Tú das')
-        .setEmoji('🟢')
-        .setStyle(ButtonStyle.Success);
+    const darButton =
+        new ButtonBuilder()
+            .setCustomId(
+                'wfl_das'
+            )
+            .setLabel(
+                'Tú das'
+            )
+            .setEmoji(
+                '🟢'
+            )
+            .setStyle(
+                ButtonStyle.Success
+            );
 
-    const recibesButton = new ButtonBuilder()
-        .setCustomId('wfl_recibes')
-        .setLabel('Te dan')
-        .setEmoji('🔵')
-        .setStyle(ButtonStyle.Primary);
+    const recibesButton =
+        new ButtonBuilder()
+            .setCustomId(
+                'wfl_recibes'
+            )
+            .setLabel(
+                'Te dan'
+            )
+            .setEmoji(
+                '🔵'
+            )
+            .setStyle(
+                ButtonStyle.Primary
+            );
 
-    const resultadoButton = new ButtonBuilder()
-        .setCustomId('wfl_resultado')
-        .setLabel('Ver resultado')
-        .setEmoji('⚖️')
-        .setStyle(ButtonStyle.Secondary);
+    const resultadoButton =
+        new ButtonBuilder()
+            .setCustomId(
+                'wfl_resultado'
+            )
+            .setLabel(
+                'Ver resultado'
+            )
+            .setEmoji(
+                '⚖️'
+            )
+            .setStyle(
+                ButtonStyle.Secondary
+            );
 
-    const limpiarButton = new ButtonBuilder()
-        .setCustomId('wfl_limpiar')
-        .setLabel('Limpiar')
-        .setEmoji('🗑️')
-        .setStyle(ButtonStyle.Danger);
+    const limpiarButton =
+        new ButtonBuilder()
+            .setCustomId(
+                'wfl_limpiar'
+            )
+            .setLabel(
+                'Limpiar'
+            )
+            .setEmoji(
+                '🗑️'
+            )
+            .setStyle(
+                ButtonStyle.Danger
+            );
 
-    const fila = new ActionRowBuilder()
-        .addComponents(
-            darButton,
-            recibesButton,
-            resultadoButton,
-            limpiarButton
-        );
+    const fila =
+        new ActionRowBuilder()
+            .addComponents(
+                darButton,
+                recibesButton,
+                resultadoButton,
+                limpiarButton
+            );
 
     return {
         embeds: [embed],
@@ -582,45 +647,80 @@ function crearPanelWFL() {
 // DATOS TEMPORALES WFL
 // ==================================================
 
-const wflData = new Map();
+const wflData =
+    new Map();
 
 // ==================================================
-// INTERACCIONES
+// /ADD Y /UPDATE
 // ==================================================
 
-client.on('interactionCreate', async interaction => {
+client.on(
+    'interactionCreate',
+    async interaction => {
 
-    // ==================================================
-    // SLASH COMMANDS
-    // ==================================================
-
-    if (interaction.isChatInputCommand()) {
+        if (
+            !interaction.isChatInputCommand()
+        ) {
+            return;
+        }
 
         // ==================================================
         // /ADD
         // ==================================================
 
-        if (interaction.commandName === 'add') {
+        if (
+            interaction.commandName ===
+            'add'
+        ) {
 
             const nombre =
-                interaction.options.getString('nombre');
+                interaction.options
+                    .getString(
+                        'nombre'
+                    );
 
             const imagen =
-                interaction.options.getAttachment('imagen');
+                interaction.options
+                    .getAttachment(
+                        'imagen'
+                    );
 
             let valor =
-                interaction.options.getString('valor');
+                interaction.options
+                    .getString(
+                        'valor'
+                    );
 
             const demanda =
-                interaction.options.getString('demanda');
+                interaction.options
+                    .getString(
+                        'demanda'
+                    );
 
             let precio =
-                interaction.options.getString('precio');
+                interaction.options
+                    .getString(
+                        'precio'
+                    );
 
-            valor = valor.replace(',', '.');
-            precio = precio.replace(',', '.');
+            valor =
+                valor.replace(
+                    ',',
+                    '.'
+                );
 
-            if (!validarNumero(valor)) {
+            precio =
+                precio.replace(
+                    ',',
+                    '.'
+                );
+
+            if (
+                !validarNumero(
+                    valor
+                )
+            ) {
+
                 return interaction.reply({
                     content:
                         '❌ El valor debe ser un número. Ejemplo: `4.2`',
@@ -628,7 +728,12 @@ client.on('interactionCreate', async interaction => {
                 });
             }
 
-            if (!validarNumero(precio)) {
+            if (
+                !validarNumero(
+                    precio
+                )
+            ) {
+
                 return interaction.reply({
                     content:
                         '❌ El precio debe ser un número. Ejemplo: `2500.5`',
@@ -641,7 +746,8 @@ client.on('interactionCreate', async interaction => {
                 const brainrot =
                     await Brainrot.create({
                         nombre,
-                        imagen: imagen.url,
+                        imagen:
+                            imagen.url,
                         valor,
                         demanda,
                         precio
@@ -682,27 +788,59 @@ client.on('interactionCreate', async interaction => {
         // /UPDATE
         // ==================================================
 
-        if (interaction.commandName === 'update') {
+        if (
+            interaction.commandName ===
+            'update'
+        ) {
 
             const nombre =
-                interaction.options.getString('nombre');
+                interaction.options
+                    .getString(
+                        'nombre'
+                    );
 
             const imagen =
-                interaction.options.getAttachment('imagen');
+                interaction.options
+                    .getAttachment(
+                        'imagen'
+                    );
 
             let valor =
-                interaction.options.getString('valor');
+                interaction.options
+                    .getString(
+                        'valor'
+                    );
 
             const demanda =
-                interaction.options.getString('demanda');
+                interaction.options
+                    .getString(
+                        'demanda'
+                    );
 
             let precio =
-                interaction.options.getString('precio');
+                interaction.options
+                    .getString(
+                        'precio'
+                    );
 
-            valor = valor.replace(',', '.');
-            precio = precio.replace(',', '.');
+            valor =
+                valor.replace(
+                    ',',
+                    '.'
+                );
 
-            if (!validarNumero(valor)) {
+            precio =
+                precio.replace(
+                    ',',
+                    '.'
+                );
+
+            if (
+                !validarNumero(
+                    valor
+                )
+            ) {
+
                 return interaction.reply({
                     content:
                         '❌ El valor debe ser un número. Ejemplo: `4.2`',
@@ -710,7 +848,12 @@ client.on('interactionCreate', async interaction => {
                 });
             }
 
-            if (!validarNumero(precio)) {
+            if (
+                !validarNumero(
+                    precio
+                )
+            ) {
+
                 return interaction.reply({
                     content:
                         '❌ El precio debe ser un número.',
@@ -721,9 +864,10 @@ client.on('interactionCreate', async interaction => {
             try {
 
                 const nombreEscapado =
-                    nombre.replace(
-                        /[.*+?^${}()|[\]\\]/g,
-                        '\\$&'
+                    escaparRegex(
+                        normalizarTexto(
+                            nombre
+                        )
                     );
 
                 const brainrot =
@@ -736,6 +880,7 @@ client.on('interactionCreate', async interaction => {
                     });
 
                 if (!brainrot) {
+
                     return interaction.reply({
                         content:
                             `❌ No existe ningún Brainrot llamado **${nombre}**.`,
@@ -788,694 +933,976 @@ client.on('interactionCreate', async interaction => {
             return;
         }
     }
+);
 
-    // ==================================================
-    // BOTONES
-    // ==================================================
+// ==================================================
+// BOTONES Y MODALES WFL
+// ==================================================
 
-    if (interaction.isButton()) {
-
-        // ==================================================
-        // TÚ DAS
-        // ==================================================
-
-        if (interaction.customId === 'wfl_das') {
-
-            const modal =
-                new ModalBuilder()
-                    .setCustomId(
-                        'wfl_modal_das'
-                    )
-                    .setTitle(
-                        '🟢 Tú das'
-                    );
-
-            const input =
-                new TextInputBuilder()
-                    .setCustomId(
-                        'wfl_das_input'
-                    )
-                    .setLabel(
-                        '¿Qué estás dando?'
-                    )
-                    .setPlaceholder(
-                        '10 garamas, 3 skibidis'
-                    )
-                    .setStyle(
-                        TextInputStyle.Paragraph
-                    )
-                    .setRequired(true);
-
-            modal.addComponents(
-                new ActionRowBuilder()
-                    .addComponents(input)
-            );
-
-            await interaction.showModal(
-                modal
-            );
-
-            return;
-        }
+client.on(
+    'interactionCreate',
+    async interaction => {
 
         // ==================================================
-        // TE DAN
-        // ==================================================
-
-        if (interaction.customId === 'wfl_recibes') {
-
-            const modal =
-                new ModalBuilder()
-                    .setCustomId(
-                        'wfl_modal_recibes'
-                    )
-                    .setTitle(
-                        '🔵 Te dan'
-                    );
-
-            const input =
-                new TextInputBuilder()
-                    .setCustomId(
-                        'wfl_recibes_input'
-                    )
-                    .setLabel(
-                        '¿Qué vas a recibir?'
-                    )
-                    .setPlaceholder(
-                        '1 dragón, 5 garamas'
-                    )
-                    .setStyle(
-                        TextInputStyle.Paragraph
-                    )
-                    .setRequired(true);
-
-            modal.addComponents(
-                new ActionRowBuilder()
-                    .addComponents(input)
-            );
-
-            await interaction.showModal(
-                modal
-            );
-
-            return;
-        }
-
-        // ==================================================
-        // RESULTADO
+        // BOTONES
         // ==================================================
 
         if (
-            interaction.customId ===
-            'wfl_resultado'
+            interaction.isButton()
         ) {
 
-            const datos =
-                wflData.get(
-                    interaction.user.id
-                );
-
-            if (!datos) {
-
-                return interaction.reply({
-                    content:
-                        '❌ Primero introduce lo que das y lo que recibes.',
-                    ephemeral: true
-                });
-            }
-
+            // TÚ DAS
             if (
-                !datos.das ||
-                !datos.recibes
+                interaction.customId ===
+                'wfl_das'
             ) {
 
-                return interaction.reply({
-                    content:
-                        '❌ Debes completar **Tú das** y **Te dan** antes de calcular.',
-                    ephemeral: true
-                });
+                const modal =
+                    new ModalBuilder()
+                        .setCustomId(
+                            'wfl_modal_das'
+                        )
+                        .setTitle(
+                            '🟢 Tú das'
+                        );
+
+                const input =
+                    new TextInputBuilder()
+                        .setCustomId(
+                            'wfl_das_input'
+                        )
+                        .setLabel(
+                            '¿Qué estás dando?'
+                        )
+                        .setPlaceholder(
+                            '10 garamas, 3 skibidis'
+                        )
+                        .setStyle(
+                            TextInputStyle.Paragraph
+                        )
+                        .setRequired(
+                            true
+                        );
+
+                modal.addComponents(
+                    new ActionRowBuilder()
+                        .addComponents(
+                            input
+                        )
+                );
+
+                await interaction.showModal(
+                    modal
+                );
+
+                return;
             }
 
-            const totalDas =
-                calcularTotal(
-                    datos.das
+            // TE DAN
+            if (
+                interaction.customId ===
+                'wfl_recibes'
+            ) {
+
+                const modal =
+                    new ModalBuilder()
+                        .setCustomId(
+                            'wfl_modal_recibes'
+                        )
+                        .setTitle(
+                            '🔵 Te dan'
+                        );
+
+                const input =
+                    new TextInputBuilder()
+                        .setCustomId(
+                            'wfl_recibes_input'
+                        )
+                        .setLabel(
+                            '¿Qué vas a recibir?'
+                        )
+                        .setPlaceholder(
+                            '1 dragon gold, 5 garamas'
+                        )
+                        .setStyle(
+                            TextInputStyle.Paragraph
+                        )
+                        .setRequired(
+                            true
+                        );
+
+                modal.addComponents(
+                    new ActionRowBuilder()
+                        .addComponents(
+                            input
+                        )
                 );
 
-            const totalRecibes =
-                calcularTotal(
-                    datos.recibes
+                await interaction.showModal(
+                    modal
                 );
 
-            const embed =
-                crearEmbedWFL({
-                    das: datos.das,
-                    recibes: datos.recibes,
-                    totalDas,
-                    totalRecibes
+                return;
+            }
+
+            // RESULTADO
+            if (
+                interaction.customId ===
+                'wfl_resultado'
+            ) {
+
+                const datos =
+                    wflData.get(
+                        interaction.user.id
+                    );
+
+                if (!datos) {
+
+                    return interaction.reply({
+                        content:
+                            '❌ Primero introduce lo que das y lo que recibes.',
+                        ephemeral: true
+                    });
+                }
+
+                if (
+                    !datos.das ||
+                    !datos.recibes
+                ) {
+
+                    return interaction.reply({
+                        content:
+                            '❌ Debes completar **Tú das** y **Te dan** antes de calcular.',
+                        ephemeral: true
+                    });
+                }
+
+                const totalDas =
+                    calcularTotal(
+                        datos.das
+                    );
+
+                const totalRecibes =
+                    calcularTotal(
+                        datos.recibes
+                    );
+
+                const embed =
+                    crearEmbedWFL({
+                        das:
+                            datos.das,
+                        recibes:
+                            datos.recibes,
+                        totalDas,
+                        totalRecibes
+                    });
+
+                await interaction.reply({
+                    embeds: [
+                        embed
+                    ],
+                    ephemeral: true
                 });
 
-            await interaction.reply({
-                embeds: [embed],
-                ephemeral: true
-            });
+                return;
+            }
 
-            return;
+            // LIMPIAR
+            if (
+                interaction.customId ===
+                'wfl_limpiar'
+            ) {
+
+                wflData.delete(
+                    interaction.user.id
+                );
+
+                await interaction.reply({
+                    content:
+                        '🗑️ Se borraron los datos de tu WFL.',
+                    ephemeral: true
+                });
+
+                return;
+            }
         }
 
         // ==================================================
-        // LIMPIAR
+        // MODALES
         // ==================================================
 
         if (
-            interaction.customId ===
-            'wfl_limpiar'
+            interaction.isModalSubmit()
         ) {
 
-            wflData.delete(
-                interaction.user.id
-            );
+            // TÚ DAS
+            if (
+                interaction.customId ===
+                'wfl_modal_das'
+            ) {
 
-            await interaction.reply({
-                content:
-                    '🗑️ Se borraron los datos de tu WFL.',
-                ephemeral: true
-            });
+                const texto =
+                    interaction.fields
+                        .getTextInputValue(
+                            'wfl_das_input'
+                        );
 
-            return;
+                const lista =
+                    await procesarLista(
+                        texto
+                    );
+
+                let datos =
+                    wflData.get(
+                        interaction.user.id
+                    ) || {};
+
+                datos.das =
+                    lista;
+
+                wflData.set(
+                    interaction.user.id,
+                    datos
+                );
+
+                const errores =
+                    lista.filter(
+                        item =>
+                            item.error
+                    );
+
+                if (
+                    errores.length
+                ) {
+
+                    return interaction.reply({
+                        content:
+                            '⚠️ Se guardó tu oferta, pero algunos Brainrots no fueron encontrados:\n\n' +
+                            errores
+                                .map(
+                                    e =>
+                                        `❌ ${e.texto || e.nombre}`
+                                )
+                                .join('\n'),
+                        ephemeral: true
+                    });
+                }
+
+                await interaction.reply({
+                    content:
+                        '✅ Se guardó correctamente lo que das.',
+                    ephemeral: true
+                });
+
+                return;
+            }
+
+            // TE DAN
+            if (
+                interaction.customId ===
+                'wfl_modal_recibes'
+            ) {
+
+                const texto =
+                    interaction.fields
+                        .getTextInputValue(
+                            'wfl_recibes_input'
+                        );
+
+                const lista =
+                    await procesarLista(
+                        texto
+                    );
+
+                let datos =
+                    wflData.get(
+                        interaction.user.id
+                    ) || {};
+
+                datos.recibes =
+                    lista;
+
+                wflData.set(
+                    interaction.user.id,
+                    datos
+                );
+
+                const errores =
+                    lista.filter(
+                        item =>
+                            item.error
+                    );
+
+                if (
+                    errores.length
+                ) {
+
+                    return interaction.reply({
+                        content:
+                            '⚠️ Se guardó tu oferta, pero algunos Brainrots no fueron encontrados:\n\n' +
+                            errores
+                                .map(
+                                    e =>
+                                        `❌ ${e.texto || e.nombre}`
+                                )
+                                .join('\n'),
+                        ephemeral: true
+                    });
+                }
+
+                await interaction.reply({
+                    content:
+                        '✅ Se guardó correctamente lo que recibes.',
+                    ephemeral: true
+                });
+
+                return;
+            }
         }
     }
-
-    // ==================================================
-    // MODALES
-    // ==================================================
-
-    if (interaction.isModalSubmit()) {
-
-        // ==================================================
-        // MODAL TÚ DAS
-        // ==================================================
-
-        if (
-            interaction.customId ===
-            'wfl_modal_das'
-        ) {
-
-            const texto =
-                interaction.fields.getTextInputValue(
-                    'wfl_das_input'
-                );
-
-            const lista =
-                await procesarLista(
-                    texto
-                );
-
-            let datos =
-                wflData.get(
-                    interaction.user.id
-                ) || {};
-
-            datos.das =
-                lista;
-
-            wflData.set(
-                interaction.user.id,
-                datos
-            );
-
-            const errores =
-                lista.filter(
-                    item => item.error
-                );
-
-            if (errores.length) {
-
-                return interaction.reply({
-                    content:
-                        '⚠️ Se guardó tu oferta, pero algunos Brainrots no fueron encontrados:\n\n' +
-                        errores
-                            .map(
-                                e =>
-                                    `❌ ${e.texto || e.nombre}`
-                            )
-                            .join('\n'),
-                    ephemeral: true
-                });
-            }
-
-            await interaction.reply({
-                content:
-                    '✅ Se guardó correctamente lo que das.',
-                ephemeral: true
-            });
-
-            return;
-        }
-
-        // ==================================================
-        // MODAL TE DAN
-        // ==================================================
-
-        if (
-            interaction.customId ===
-            'wfl_modal_recibes'
-        ) {
-
-            const texto =
-                interaction.fields.getTextInputValue(
-                    'wfl_recibes_input'
-                );
-
-            const lista =
-                await procesarLista(
-                    texto
-                );
-
-            let datos =
-                wflData.get(
-                    interaction.user.id
-                ) || {};
-
-            datos.recibes =
-                lista;
-
-            wflData.set(
-                interaction.user.id,
-                datos
-            );
-
-            const errores =
-                lista.filter(
-                    item => item.error
-                );
-
-            if (errores.length) {
-
-                return interaction.reply({
-                    content:
-                        '⚠️ Se guardó tu oferta, pero algunos Brainrots no fueron encontrados:\n\n' +
-                        errores
-                            .map(
-                                e =>
-                                    `❌ ${e.texto || e.nombre}`
-                            )
-                            .join('\n'),
-                    ephemeral: true
-                });
-            }
-
-            await interaction.reply({
-                content:
-                    '✅ Se guardó correctamente lo que recibes.',
-                ephemeral: true
-            });
-
-            return;
-        }
-    }
-});
+);
 
 // ==================================================
 // ?VALOR
 // ==================================================
 
-client.on('messageCreate', async message => {
+client.on(
+    'messageCreate',
+    async message => {
 
-    if (message.author.bot) return;
+        if (message.author.bot) {
+            return;
+        }
 
-    if (
-        !message.content
-            .toLowerCase()
-            .startsWith('?valor')
-    ) {
-        return;
-    }
-
-    const busqueda =
-        message.content
-            .slice(6)
-            .trim();
-
-    if (!busqueda) {
-        return message.reply(
-            '❌ Escribe el nombre o parte del nombre del Brainrot.\n\n' +
-            'Ejemplo: `?valor skibidi`'
-        );
-    }
-
-    try {
-
-        const palabras =
-            busqueda
-                .split(/\s+/)
-                .filter(Boolean);
-
-        const regex =
-            palabras
-                .map(palabra =>
-                    palabra.replace(
-                        /[.*+?^${}()|[\]\\]/g,
-                        '\\$&'
-                    )
+        if (
+            !message.content
+                .toLowerCase()
+                .startsWith(
+                    '?valor'
                 )
-                .join('.*');
+        ) {
+            return;
+        }
 
-        const brainrots =
-            await Brainrot.find({
-                nombre: {
-                    $regex: regex,
-                    $options: 'i'
-                }
-            })
-            .limit(25);
+        const busqueda =
+            message.content
+                .slice(6)
+                .trim();
 
-        if (!brainrots.length) {
+        if (!busqueda) {
 
             return message.reply(
-                `❌ No encontré ningún Brainrot relacionado con **${busqueda}**.`
+                '❌ Escribe el nombre o parte del nombre del Brainrot.\n\n' +
+                'Ejemplo: `?valor skibidi`'
             );
         }
 
-        if (brainrots.length === 1) {
+        try {
 
-            return message.reply({
-                embeds: [
-                    crearEmbedBrainrot(
-                        brainrots[0]
+            const palabras =
+                busqueda
+                    .split(/\s+/)
+                    .filter(Boolean);
+
+            const regex =
+                palabras
+                    .map(
+                        palabra =>
+                            escaparRegex(
+                                palabra
+                            )
                     )
-                ]
+                    .join('.*');
+
+            const brainrots =
+                await Brainrot.find({
+                    nombre: {
+                        $regex:
+                            regex,
+                        $options: 'i'
+                    }
+                })
+                .limit(25);
+
+            if (
+                !brainrots.length
+            ) {
+
+                return message.reply(
+                    `❌ No encontré ningún Brainrot relacionado con **${busqueda}**.`
+                );
+            }
+
+            if (
+                brainrots.length ===
+                1
+            ) {
+
+                return message.reply({
+                    embeds: [
+                        crearEmbedBrainrot(
+                            brainrots[0]
+                        )
+                    ]
+                });
+            }
+
+            const botones =
+                brainrots.map(
+                    brainrot =>
+
+                        new ButtonBuilder()
+                            .setCustomId(
+                                `brainrot_${brainrot._id}`
+                            )
+                            .setLabel(
+                                brainrot.nombre.substring(
+                                    0,
+                                    80
+                                )
+                            )
+                            .setStyle(
+                                ButtonStyle.Secondary
+                            )
+                );
+
+            const filas = [];
+
+            for (
+                let i = 0;
+                i < botones.length;
+                i += 5
+            ) {
+
+                filas.push(
+                    new ActionRowBuilder()
+                        .addComponents(
+                            botones.slice(
+                                i,
+                                i + 5
+                            )
+                        )
+                );
+            }
+
+            const embed =
+                new EmbedBuilder()
+                    .setTitle(
+                        '🔎 Resultados de búsqueda'
+                    )
+                    .setDescription(
+                        `Encontré **${brainrots.length}** Brainrots relacionados con:\n` +
+                        `**${busqueda}**\n\n` +
+                        'Selecciona el que estás buscando.'
+                    )
+                    .setTimestamp();
+
+            await message.reply({
+                embeds: [embed],
+                components: filas
             });
-        }
 
-        const botones =
-            brainrots.map(brainrot =>
-                new ButtonBuilder()
-                    .setCustomId(
-                        `brainrot_${brainrot._id}`
-                    )
-                    .setLabel(
-                        brainrot.nombre.substring(
-                            0,
-                            80
-                        )
-                    )
-                    .setStyle(
-                        ButtonStyle.Secondary
-                    )
+        } catch (error) {
+
+            console.error(
+                '❌ Error buscando Brainrot:',
+                error
             );
 
-        const filas = [];
-
-        for (
-            let i = 0;
-            i < botones.length;
-            i += 5
-        ) {
-
-            filas.push(
-                new ActionRowBuilder()
-                    .addComponents(
-                        botones.slice(
-                            i,
-                            i + 5
-                        )
-                    )
+            await message.reply(
+                '❌ Ocurrió un error al buscar el Brainrot.'
             );
         }
-
-        const embed =
-            new EmbedBuilder()
-                .setTitle(
-                    '🔎 Resultados de búsqueda'
-                )
-                .setDescription(
-                    `Encontré **${brainrots.length}** Brainrots relacionados con:\n` +
-                    `**${busqueda}**\n\n` +
-                    'Selecciona el que estás buscando.'
-                )
-                .setTimestamp();
-
-        await message.reply({
-            embeds: [embed],
-            components: filas
-        });
-
-    } catch (error) {
-
-        console.error(
-            '❌ Error buscando Brainrot:',
-            error
-        );
-
-        await message.reply(
-            '❌ Ocurrió un error al buscar el Brainrot.'
-        );
     }
-});
+);
 
 // ==================================================
 // ?VALORES
 // ==================================================
 
-client.on('messageCreate', async message => {
+client.on(
+    'messageCreate',
+    async message => {
 
-    if (message.author.bot) return;
-
-    if (
-        message.content
-            .toLowerCase()
-            .trim() !== '?valores'
-    ) {
-        return;
-    }
-
-    try {
-
-        const brainrots =
-            await Brainrot.find()
-                .sort({ nombre: 1 });
-
-        if (!brainrots.length) {
-
-            return message.reply(
-                '❌ No hay Brainrots registrados todavía.'
-            );
+        if (message.author.bot) {
+            return;
         }
 
-        const porPagina = 25;
+        if (
+            message.content
+                .toLowerCase()
+                .trim() !==
+            '?valores'
+        ) {
+            return;
+        }
 
-        const pagina = 0;
+        try {
 
-        const totalPaginas =
-            Math.ceil(
-                brainrots.length /
-                porPagina
-            );
+            const brainrots =
+                await Brainrot.find()
+                    .sort({
+                        nombre: 1
+                    });
 
-        const lista =
-            brainrots.slice(
-                0,
-                porPagina
-            );
+            if (
+                !brainrots.length
+            ) {
 
-        const opciones =
-            lista.map(brainrot => ({
-                label:
-                    brainrot.nombre.substring(
-                        0,
-                        100
-                    ),
-                value:
-                    brainrot._id.toString()
-            }));
+                return message.reply(
+                    '❌ No hay Brainrots registrados todavía.'
+                );
+            }
 
-        const menu =
-            new StringSelectMenuBuilder()
-                .setCustomId(
-                    'valores_select'
-                )
-                .setPlaceholder(
-                    '🔎 Busca o selecciona un Brainrot'
-                )
-                .addOptions(
-                    opciones
+            const porPagina = 25;
+
+            const pagina = 0;
+
+            const totalPaginas =
+                Math.ceil(
+                    brainrots.length /
+                    porPagina
                 );
 
-        const fila =
-            new ActionRowBuilder()
-                .addComponents(
-                    menu
+            const lista =
+                brainrots.slice(
+                    0,
+                    porPagina
                 );
 
-        const embed =
-            new EmbedBuilder()
-                .setTitle(
-                    '📚 VALORES DE BRAINROTS'
-                )
-                .setDescription(
-                    '🔎 **Selecciona un Brainrot para consultar su información.**\n\n' +
-                    `📦 Brainrots registrados: **${brainrots.length}**\n` +
-                    `📄 Página: **${pagina + 1}/${totalPaginas}**`
-                )
-                .setTimestamp();
+            const opciones =
+                lista.map(
+                    brainrot => ({
+                        label:
+                            brainrot.nombre.substring(
+                                0,
+                                100
+                            ),
+                        value:
+                            brainrot._id.toString()
+                    })
+                );
 
-        await message.reply({
-            embeds: [embed],
-            components: [fila]
-        });
+            const menu =
+                new StringSelectMenuBuilder()
+                    .setCustomId(
+                        'valores_select'
+                    )
+                    .setPlaceholder(
+                        '🔎 Busca o selecciona un Brainrot'
+                    )
+                    .addOptions(
+                        opciones
+                    );
 
-    } catch (error) {
+            const fila =
+                new ActionRowBuilder()
+                    .addComponents(
+                        menu
+                    );
 
-        console.error(
-            '❌ Error creando panel:',
-            error
-        );
+            const embed =
+                new EmbedBuilder()
+                    .setTitle(
+                        '📚 VALORES DE BRAINROTS'
+                    )
+                    .setDescription(
+                        '🔎 **Selecciona un Brainrot para consultar su información.**\n\n' +
+                        `📦 Brainrots registrados: **${brainrots.length}**\n` +
+                        `📄 Página: **${pagina + 1}/${totalPaginas}**`
+                    )
+                    .setTimestamp();
 
-        await message.reply(
-            '❌ Ocurrió un error al cargar los valores.'
-        );
+            await message.reply({
+                embeds: [embed],
+                components: [fila]
+            });
+
+        } catch (error) {
+
+            console.error(
+                '❌ Error creando panel:',
+                error
+            );
+
+            await message.reply(
+                '❌ Ocurrió un error al cargar los valores.'
+            );
+        }
     }
-});
+);
 
 // ==================================================
 // ?WFL
 // ==================================================
 
-client.on('messageCreate', async message => {
+client.on(
+    'messageCreate',
+    async message => {
 
-    if (message.author.bot) return;
+        if (message.author.bot) {
+            return;
+        }
 
-    if (
-        message.content
-            .toLowerCase()
-            .trim() !== '?wfl'
-    ) {
-        return;
+        if (
+            message.content
+                .toLowerCase()
+                .trim() !==
+            '?wfl'
+        ) {
+            return;
+        }
+
+        wflData.delete(
+            message.author.id
+        );
+
+        await message.reply(
+            crearPanelWFL()
+        );
     }
-
-    wflData.delete(
-        message.author.id
-    );
-
-    await message.reply(
-        crearPanelWFL()
-    );
-});
+);
 
 // ==================================================
 // BOTONES DE ?VALOR
 // ==================================================
 
-client.on('interactionCreate', async interaction => {
+client.on(
+    'interactionCreate',
+    async interaction => {
 
-    if (!interaction.isButton()) return;
+        if (
+            !interaction.isButton()
+        ) {
+            return;
+        }
 
-    if (
-        !interaction.customId.startsWith(
-            'brainrot_'
-        )
-    ) {
-        return;
-    }
+        if (
+            !interaction.customId
+                .startsWith(
+                    'brainrot_'
+                )
+        ) {
+            return;
+        }
 
-    const id =
-        interaction.customId.replace(
-            'brainrot_',
-            ''
-        );
+        const id =
+            interaction.customId.replace(
+                'brainrot_',
+                ''
+            );
 
-    try {
+        try {
 
-        const brainrot =
-            await Brainrot.findById(id);
+            const brainrot =
+                await Brainrot.findById(
+                    id
+                );
 
-        if (!brainrot) {
+            if (!brainrot) {
 
-            return interaction.reply({
+                return interaction.reply({
+                    content:
+                        '❌ Ese Brainrot ya no existe.',
+                    ephemeral: true
+                });
+            }
+
+            await interaction.reply({
+                embeds: [
+                    crearEmbedBrainrot(
+                        brainrot
+                    )
+                ],
+                ephemeral: true
+            });
+
+        } catch (error) {
+
+            console.error(
+                error
+            );
+
+            await interaction.reply({
                 content:
-                    '❌ Ese Brainrot ya no existe.',
+                    '❌ Ocurrió un error.',
                 ephemeral: true
             });
         }
-
-        await interaction.reply({
-            embeds: [
-                crearEmbedBrainrot(
-                    brainrot
-                )
-            ],
-            ephemeral: true
-        });
-
-    } catch (error) {
-
-        console.error(error);
-
-        await interaction.reply({
-            content:
-                '❌ Ocurrió un error.',
-            ephemeral: true
-        });
     }
-});
+);
 
 // ==================================================
 // SELECTOR DE ?VALORES
 // ==================================================
 
-client.on('interactionCreate', async interaction => {
+client.on(
+    'interactionCreate',
+    async interaction => {
 
-    if (!interaction.isStringSelectMenu()) {
-        return;
-    }
+        if (
+            !interaction.isStringSelectMenu()
+        ) {
+            return;
+        }
 
-    if (
-        interaction.customId !==
-        'valores_select'
-    ) {
-        return;
-    }
+        if (
+            interaction.customId !==
+            'valores_select'
+        ) {
+            return;
+        }
 
-    const id =
-        interaction.values[0];
+        const id =
+            interaction.values[0];
 
-    try {
+        try {
 
-        const brainrot =
-            await Brainrot.findById(id);
+            const brainrot =
+                await Brainrot.findById(
+                    id
+                );
 
-        if (!brainrot) {
+            if (!brainrot) {
 
-            return interaction.reply({
+                return interaction.reply({
+                    content:
+                        '❌ Ese Brainrot ya no existe.',
+                    ephemeral: true
+                });
+            }
+
+            await interaction.reply({
+                embeds: [
+                    crearEmbedBrainrot(
+                        brainrot
+                    )
+                ],
+                ephemeral: true
+            });
+
+        } catch (error) {
+
+            console.error(
+                error
+            );
+
+            await interaction.reply({
                 content:
-                    '❌ Ese Brainrot ya no existe.',
+                    '❌ Ocurrió un error.',
                 ephemeral: true
             });
         }
-
-        await interaction.reply({
-            embeds: [
-                crearEmbedBrainrot(
-                    brainrot
-                )
-            ],
-            ephemeral: true
-        });
-
-    } catch (error) {
-
-        console.error(error);
-
-        await interaction.reply({
-            content:
-                '❌ Ocurrió un error.',
-            ephemeral: true
-        });
     }
-});
+);
+
+// ==================================================
+// COMANDOS SLASH
+// ==================================================
+
+const addCommand =
+    new SlashCommandBuilder()
+        .setName('add')
+        .setDescription(
+            'Añade un Brainrot'
+        )
+        .addStringOption(
+            option =>
+                option
+                    .setName(
+                        'nombre'
+                    )
+                    .setDescription(
+                        'Nombre del Brainrot'
+                    )
+                    .setRequired(
+                        true
+                    )
+        )
+        .addAttachmentOption(
+            option =>
+                option
+                    .setName(
+                        'imagen'
+                    )
+                    .setDescription(
+                        'Imagen del Brainrot'
+                    )
+                    .setRequired(
+                        true
+                    )
+        )
+        .addStringOption(
+            option =>
+                option
+                    .setName(
+                        'valor'
+                    )
+                    .setDescription(
+                        'Valor. Ejemplo: 4.2'
+                    )
+                    .setRequired(
+                        true
+                    )
+        )
+        .addStringOption(
+            option =>
+                option
+                    .setName(
+                        'demanda'
+                    )
+                    .setDescription(
+                        'Demanda del Brainrot'
+                    )
+                    .setRequired(
+                        true
+                    )
+        )
+        .addStringOption(
+            option =>
+                option
+                    .setName(
+                        'precio'
+                    )
+                    .setDescription(
+                        'Precio en Robux'
+                    )
+                    .setRequired(
+                        true
+                    )
+        );
+
+const updateCommand =
+    new SlashCommandBuilder()
+        .setName('update')
+        .setDescription(
+            'Actualiza un Brainrot existente'
+        )
+        .addStringOption(
+            option =>
+                option
+                    .setName(
+                        'nombre'
+                    )
+                    .setDescription(
+                        'Nombre actual del Brainrot'
+                    )
+                    .setRequired(
+                        true
+                    )
+        )
+        .addAttachmentOption(
+            option =>
+                option
+                    .setName(
+                        'imagen'
+                    )
+                    .setDescription(
+                        'Nueva imagen'
+                    )
+                    .setRequired(
+                        true
+                    )
+        )
+        .addStringOption(
+            option =>
+                option
+                    .setName(
+                        'valor'
+                    )
+                    .setDescription(
+                        'Nuevo valor. Ejemplo: 4.2'
+                    )
+                    .setRequired(
+                        true
+                    )
+        )
+        .addStringOption(
+            option =>
+                option
+                    .setName(
+                        'demanda'
+                    )
+                    .setDescription(
+                        'Nueva demanda'
+                    )
+                    .setRequired(
+                        true
+                    )
+        )
+        .addStringOption(
+            option =>
+                option
+                    .setName(
+                        'precio'
+                    )
+                    .setDescription(
+                        'Nuevo precio en Robux'
+                    )
+                    .setRequired(
+                        true
+                    )
+        );
+
+// ==================================================
+// REGISTRAR COMANDOS
+// ==================================================
+
+client.once(
+    'ready',
+    async () => {
+
+        console.log(
+            `✅ Bot conectado como ${client.user.tag}`
+        );
+
+        try {
+
+            await client.application.commands.set([
+                addCommand.toJSON(),
+                updateCommand.toJSON()
+            ]);
+
+            console.log(
+                '✅ Comandos /add y /update registrados correctamente'
+            );
+
+        } catch (error) {
+
+            console.error(
+                '❌ Error registrando comandos:',
+                error
+            );
+        }
+    }
+);
+
+// ==================================================
+// MONGODB
+// ==================================================
+
+mongoose.connect(
+    process.env.MONGO_URI
+)
+    .then(() => {
+
+        console.log(
+            '✅ Conectado a MongoDB'
+        );
+
+    })
+    .catch(error => {
+
+        console.error(
+            '❌ Error conectando a MongoDB:',
+            error
+        );
+    });
 
 // ==================================================
 // LOGIN
 // ==================================================
 
-client.login(process.env.TOKEN);
+client.login(
+    process.env.TOKEN
+);
